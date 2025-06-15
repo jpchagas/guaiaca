@@ -1,1 +1,109 @@
 i would like to create an app in React Native if you can create step by step adding each element per time where i can validate by steps. This application should contains a Tab Navigation where one tab will have a balance chart and the other one will be a table of information. The application should contain a Floation Action Button that will enable three ways to add data to application, manual expense, manual earn and by file. The last element will be a left menu where will contains a filter by month that will reflect in chart and tab. The last element will be a login page
+/---------------------------------------------------------------------------------/
+I've a react native application that contains the following elements:
+- Tab Navigation:
+-- Chart Tab
+-- Table Tab
+- Gobal FAB with 3 modals:
+-- Manual Expense
+-- Manual Earn
+-- File Uploader
+- DrawereNavigator
+-- Month Filter
+-- Logout Button
+- Login Screen
+- Firebase Connection
+
+So right now a need to refine the Modal of Manual Expense and Manual Earn no add more fields in the form and save it into the Firebase
+/---------------------------------------------------------------------------------/
+i've this form in React Native
+<>
+        <Text style={styles.title}>Add Transaction</Text>
+
+        {/* Transaction Type */}
+        <Text style={styles.label}>Transaction Type</Text>
+        <Picker
+          selectedValue={transactionType}
+          onValueChange={setTransactionType}
+        >
+          <Picker.Item label="Select type" value="" />
+          <Picker.Item label="Income" value="income" />
+          <Picker.Item label="Expenses" value="expenses" />
+          <Picker.Item label="Investment" value="investment" />
+        </Picker>
+
+        {/* Description */}
+        <TextInput
+          style={styles.input}
+          placeholder="Description"
+          value={description}
+          onChangeText={setDescription}
+        />
+
+        {/* Amount */}
+        <TextInput
+          style={styles.input}
+          placeholder="Amount"
+          keyboardType="numeric"
+          value={amount}
+          onChangeText={setAmount}
+        />
+
+        {/* Origin */}
+        <TextInput
+          style={styles.input}
+          placeholder="Origin (Partner or Home)"
+          value={origin}
+          onChangeText={setOrigin}
+        />
+
+        {/* Category */}
+        <Text style={styles.label}>Category</Text>
+        <Picker
+          selectedValue={category}
+          onValueChange={setCategory}
+        >
+          <Picker.Item label="Select category" value="" />
+          <Picker.Item label="Restaurant" value="restaurant" />
+          <Picker.Item label="Supermarket" value="supermarket" />
+          <Picker.Item label="Transport" value="transport" />
+          <Picker.Item label="Shopping" value="shopping" />
+        </Picker>
+
+        {/* Payment Method */}
+        <Text style={styles.label}>Payment Method</Text>
+        <Picker
+          selectedValue={paymentMethod}
+          onValueChange={setPaymentMethod}
+        >
+          <Picker.Item label="Select method" value="" />
+          <Picker.Item label="Money" value="money" />
+          <Picker.Item label="Credit Card" value="creditCard" />
+        </Picker>
+
+        {/* Credit Card Fields */}
+        {paymentMethod === 'creditCard' && (
+          <>
+            <TextInput
+              style={styles.input}
+              placeholder="Card Name"
+              value={cardName}
+              onChangeText={setCardName}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Parcel Number (e.g., 1)"
+              keyboardType="numeric"
+              value={parcelNumber}
+              onChangeText={setParcelNumber}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Total Parcels (e.g., 12)"
+              keyboardType="numeric"
+              value={totalParcels}
+              onChangeText={setTotalParcels}
+            />
+          </>
+
+but is missing a field for transaction date

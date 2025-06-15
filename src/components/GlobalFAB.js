@@ -10,8 +10,7 @@ export default function GlobalFAB({ onSelectAction }) {
       icon={fabOpen ? 'close' : 'plus'}
       actions={[
         { icon: 'file-upload', label: 'Import File', onPress: () => onSelectAction('file') },
-        { icon: 'cash-plus', label: 'Manual Earn', onPress: () => onSelectAction('earn') },
-        { icon: 'cash-minus', label: 'Manual Expense', onPress: () => onSelectAction('expense') },
+        { icon: 'cash', label: 'Add Transaction', onPress: () => onSelectAction('transaction') },
       ]}
       onStateChange={({ open }) => setFabOpen(open)}
     />
