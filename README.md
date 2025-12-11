@@ -70,7 +70,7 @@ npm run preview
 ``` bash
 firebase deploy --only hosting
 ```
-
+(R\$ [0-9]+\,[0-9]+) (\D+) (\([0-9]\/[0-9]+\) )?([0-9]+ \w+)
  ## Features
 
 📱 Adding a responsive dashboard layout (for finances),
@@ -109,54 +109,3 @@ Would you like me to make it match your brand theme (green highlights, rounded c
 
 Would you like me to add a bar chart below the pie showing monthly income vs expenses next? It gives a great visual trend.
 
-
-## Mapeamento de Arquivos
-
-### BTG
-PDF:
-Data de Compra
-Descrição
-Parcela
-Valor
-
-XLSX:
-Data	
-Descrição		
-Valor	
-Tipo de compra	
-Código de autorização	
-Final Cartão
-
-### C6
-PDF:
-Data de Compra
-Descrição
-Parcela
-Valor
-
-CSV:
-Data de Compra	
-Nome no Cartão	
-Final do Cartão	
-Categoria	
-Descrição	
-Parcela	Valor (em US$)	
-Cotação (em R$)	
-Valor (em R$)
-
-### Bradesco
-PDF:
-Data de Compra
-Descrição
-Parcela
-Valor
-
-### Nubank
-PDF:
-Data de Compra
-Final do Cartão
-Descrição
-Parcela
-Valor
-
-### Itaú

@@ -136,3 +136,5 @@ dist
 .pnp.*
 
 .expo/
+/data
+*.cache

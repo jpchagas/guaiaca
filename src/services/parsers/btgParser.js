@@ -1,14 +1,19 @@
 // src/services/parsers/btgParser.js
 import * as XLSX from "xlsx";
 import * as pdfjsLib from "pdfjs-dist";
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url
+).toString();
 
 /**
  * Parse BTG Pactual credit card statements (XLSX or PDF)
  * Returns array of transactions in unified format
  */
 export default async function parseBTG(file) {
+  console.log("Processing BTG file");
   const fileType = file.name.split(".").pop().toLowerCase();
-
+  console.log(`File Type: ${fileType}`);
   if (fileType === "xlsx") {
     return await parseBTGXLSX(file);
   } else if (fileType === "pdf") {
@@ -42,33 +47,40 @@ async function parseBTGXLSX(file) {
 async function parseBTGPDF(file) {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-
   let textContent = "";
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
     textContent += content.items.map((item) => item.str).join(" ") + "\n";
   }
-
+  console.log(textContent)
   // Match example lines like:
   // "12 Set Armazém 43 24out (2/2) R$ 74,50"
-  const regex = /(\d{2})\s([A-Za-z]{3})\s+(.*?)\s+\(?(\d+\/\d+)?\)?\s*R\$?\s?([\d.,]+)/g;
-  const currentYear = new Date().getFullYear();
+const regex = /(R\$ [0-9]+\,[0-9]+) (\D+?) (\([0-9]\/[0-9]+\) )?([0-9]+ \w+)/g;
 
-  const transactions = [];
-  let match;
-  while ((match = regex.exec(textContent)) !== null) {
-    const [, day, monthAbbrev, description, parcel, value] = match;
-    transactions.push({
-      date: parseDateFromPDF(day, monthAbbrev, currentYear),
-      description: description.trim(),
-      amount: -parseAmount(value), // assume it's expense
-      category: inferCategory(description),
-      bank: "BTG",
-    });
-  }
+const transactions = [];
+let match;
 
-  return transactions;
+while ((match = regex.exec(textContent)) !== null) {
+  const [, amountRaw, descriptionRaw, parcelRaw, dateRaw] = match;
+
+  const amount = parseAmount(amountRaw); // parse "R$ 123,45" → 123.45
+  const description = descriptionRaw.trim();
+  const parcel = parcelRaw ? parcelRaw.replace(/[()]/g, "").trim() : "0/0";
+  const date = dateRaw.trim();
+
+  transactions.push({
+    amount: -amount, // assume expense
+    description,
+    parcel,
+    date,
+    category: inferCategory(description),
+    bank: "BTG",
+  });
+}
+
+console.log(transactions);
+return transactions;
 }
 
 /** 🔢 Helpers */

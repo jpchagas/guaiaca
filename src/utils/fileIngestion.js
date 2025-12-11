@@ -7,6 +7,7 @@ import { collection, addDoc, doc, getDoc, serverTimestamp } from "firebase/fires
  * Expected columns: date, description, category, amount
  */
 export async function ingestCSVFile(file) {
+  console.log("i'm inside the ingestCSVFile")
   return new Promise((resolve, reject) => {
     Papa.parse(file, {
       header: true,

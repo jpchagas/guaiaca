@@ -13,6 +13,8 @@ import parseBTG from "./btgParser";
  * @returns {Promise<Array>} Array of normalized transaction objects
  */
 export async function parseFile(file, bankName) {
+  console.log(`🟢 Parsing file for bank: ${bankName}`);
+  console.log(`🟢 The file: ${file}`);
   switch (bankName.toLowerCase()) {
     case "btg":
       return await parseBTG(file);

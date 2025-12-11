@@ -9,6 +9,7 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
+  ListItemButton,
   Box,
   CssBaseline,
   Divider,
@@ -44,7 +45,7 @@ import { useNavigate, Outlet, useLocation } from "react-router-dom";
 import { signOut } from "firebase/auth";
 import { auth, db } from "../firebaseConfig";
 import { collection, doc, addDoc, serverTimestamp, getDoc } from "firebase/firestore";
-import { ingestCSVFile } from "../utils/fileIngestion";
+import {ingestTransactionsList} from "../services/ingestion/ingestTransactionsList"
 import { parseFile } from "../services/parsers/parseFile";
 
 const drawerWidth = 240;
@@ -103,17 +104,25 @@ const handleFileChange = async (e) => {
   setFile(selectedFile);
   setError(null); // Clear previous error
 
-  try {
-    // parseFile might throw (e.g. unsupported bank)
-    await parseFile(selectedFile, selectedBank);
-    await ingestCSVFile(selectedFile);
+try {
+  console.log("🟡 Starting parse + ingest flow...");
 
-    alert("File ingested successfully!");
-    setUploadDialogOpen(false);
-  } catch (err) {
-    console.error("File ingestion or parsing failed:", err);
-    setError(err.message || "An unexpected error occurred.");
+  const parsedTransactions = await parseFile(selectedFile, selectedBank);
+  console.log("✅ Parsed transactions:", parsedTransactions);
+
+  // Only call ingest if parsing returned transactions
+  if (Array.isArray(parsedTransactions) && parsedTransactions.length > 0) {
+    await ingestTransactionsList(parsedTransactions);
+    alert("✅ Transactions imported successfully!");
+  } else {
+    alert("⚠️ No valid transactions found in file.");
   }
+
+  setUploadDialogOpen(false);
+} catch (err) {
+  console.error("File ingestion or parsing failed:", err);
+  setError(err.message || "An unexpected error occurred.");
+}
 };
 
   const handleDrop = (e) => {
@@ -183,38 +192,66 @@ const handleManualSubmit = async () => {
 
 
   // ==== Drawer ====
-  const drawer = (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <Typography
-        variant="h5"
-        sx={{ my: 2, textAlign: "center", fontWeight: 700, color: "primary.main" }}
-      >
-        Guaiaca 💰
-      </Typography>
-      <Divider />
-      <List>
-        <ListItem button onClick={() => navigate("/home")}>
-          <ListItemIcon><Home color="primary" /></ListItemIcon>
+const drawer = (
+  <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <Typography
+      variant="h5"
+      sx={{
+        my: 2,
+        textAlign: "center",
+        fontWeight: 700,
+        color: "primary.main",
+      }}
+    >
+      Guaiaca 💰
+    </Typography>
+
+    <Divider />
+
+    <List>
+      <ListItem disablePadding>
+        <ListItemButton onClick={() => navigate("/home")}>
+          <ListItemIcon>
+            <Home color="primary" />
+          </ListItemIcon>
           <ListItemText primary="Overview" />
-        </ListItem>
-        <ListItem button onClick={() => navigate("/home/transactions")}>
-          <ListItemIcon><AccountBalanceWallet color="primary" /></ListItemIcon>
+        </ListItemButton>
+      </ListItem>
+
+      <ListItem disablePadding>
+        <ListItemButton onClick={() => navigate("/home/transactions")}>
+          <ListItemIcon>
+            <AccountBalanceWallet color="primary" />
+          </ListItemIcon>
           <ListItemText primary="Transactions" />
-        </ListItem>
-        <ListItem button onClick={() => navigate("/home/settings")}>
-          <ListItemIcon><Settings color="primary" /></ListItemIcon>
+        </ListItemButton>
+      </ListItem>
+
+      <ListItem disablePadding>
+        <ListItemButton onClick={() => navigate("/home/settings")}>
+          <ListItemIcon>
+            <Settings color="primary" />
+          </ListItemIcon>
           <ListItemText primary="Settings" />
-        </ListItem>
-      </List>
-      <Divider sx={{ mt: "auto" }} />
-      <List>
-        <ListItem button onClick={handleLogout}>
-          <ListItemIcon><Logout color="error" /></ListItemIcon>
+        </ListItemButton>
+      </ListItem>
+    </List>
+
+    <Divider sx={{ mt: "auto" }} />
+
+    <List>
+      <ListItem disablePadding>
+        <ListItemButton onClick={handleLogout}>
+          <ListItemIcon>
+            <Logout color="error" />
+          </ListItemIcon>
           <ListItemText primary="Logout" />
-        </ListItem>
-      </List>
-    </Box>
-  );
+        </ListItemButton>
+      </ListItem>
+    </List>
+  </Box>
+);
+
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
@@ -346,7 +383,7 @@ const handleManualSubmit = async () => {
             { name: "Nubank", logo: "/nubank_logo.png" },
             { name: "Banrisul", logo: "/banrisul_logo.png" },
             { name: "Caixa", logo: "/caixa_logo.png" },
-            { name: "Caixa", logo: "/itau_logo.png" },
+            { name: "Itau", logo: "/itau_logo.png" },
           ].map((bank) => (
             <Box
               key={bank.name}
