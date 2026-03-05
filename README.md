@@ -109,3 +109,185 @@ Would you like me to make it match your brand theme (green highlights, rounded c
 
 Would you like me to add a bar chart below the pie showing monthly income vs expenses next? It gives a great visual trend.
 
+## Current Context
+
+Guaiaca Project — Progress Summary
+
+Date: 2026-03-04
+Project: Personal Finance & Household Expense Management App
+
+1. Authentication & User Management
+
+Signup / Login / Forgot Password
+
+Users can sign up with name, email, and password (Signup.jsx).
+
+Login authenticates with Firebase Auth (Login.jsx) and retrieves householdId from Firestore.
+
+Password reset functionality implemented via Firebase Auth (ForgotPassword.jsx).
+
+User Firestore Document
+
+Stores name, email, householdId, createdAt.
+
+householdId starts as null until the user joins or creates a household.
+
+2. Household Management
+
+Settings & Household Operations (Settings.jsx)
+
+Users can create a household if they don’t have one.
+
+Add members via email, or generate invite links.
+
+Household document includes name, members, createdAt.
+
+Joining a Household
+
+JoinHousehold.jsx and Invite.jsx allow users to join via invite link (householdId query param).
+
+Updates both user document (householdId) and household document (members array).
+
+3. Dashboard & Navigation
+
+Dashboard Layout (DashboardLayout.jsx)
+
+Persistent sidebar with Overview, Transactions, and Settings pages.
+
+Mobile responsive design with BottomNavigation for small screens.
+
+Includes SpeedDial for quick transaction entry:
+
+Upload CSV/Excel files.
+
+Add manually via a form.
+
+Handles logout globally.
+
+Month filter (selectedMonth) implemented; can integrate with FilterContext for global filtering.
+
+4. Transactions & Overview
+
+Overview Page (Overview.jsx)
+
+Fetches transactions for the current household.
+
+Supports global filters via FilterContext (classification, category, method, dateFrom, dateTo).
+
+Computes:
+
+Total Income
+
+Total Expenses
+
+Investments
+
+Total Balance
+
+Displays pie chart for expenses by category.
+
+Option to seed mock transactions if none exist.
+
+Transactions Management
+
+Manual addition of transactions (with parceling support) via DashboardLayout.
+
+File ingestion system implemented:
+
+parseFile handles CSV/Excel parsing.
+
+ingestTransactionsList writes transactions to Firestore.
+
+5. State & Context
+
+Global Filters (FilterContext.jsx)
+
+Provides a central place to store filters (classification, method, category, dateFrom, dateTo).
+
+Overview.jsx uses it to filter transactions.
+
+Suggestion: integrate month filter (selectedMonth) into this context to unify filtering across pages.
+
+6. Navigation & Routing
+
+React Router used for:
+
+/ → Login
+
+/signup → Sign Up
+
+/forgot-password → Password reset
+
+/home → Overview
+
+/home/transactions → Transactions
+
+/home/settings → Settings
+
+/invite → Join via invite link
+
+DashboardLayout wraps /home routes for consistent layout.
+
+7. Styling & UI
+
+Uses MUI components across the app:
+
+Container, Paper, Typography, Button, TextField, Drawer, SpeedDial, etc.
+
+Responsive layout:
+
+Permanent sidebar on desktop.
+
+Bottom navigation on mobile.
+
+Visual feedback for:
+
+Loading (CircularProgress)
+
+Success & error messages (Alert, color-coded Typography).
+
+8. Firebase Integration
+
+Auth: createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail.
+
+Firestore:
+
+Users collection (users) → name, email, householdId.
+
+Households collection (households) → name, members.
+
+Transactions collection (transactions) → description, amount, classification, category, parcel info, date, method, card, householdId, createdAt.
+
+Firestore Operations:
+
+setDoc, updateDoc, getDoc, getDocs, arrayUnion, serverTimestamp.
+
+9. Next Steps / To Do
+
+ Integrate DashboardLayout month filter fully with FilterContext for global filtering.
+
+ Build Transactions page to list, edit, and delete transactions.
+
+ Enhance file ingestion and parser error handling.
+
+ Add pagination / lazy loading for transactions list.
+
+ Improve member management in households (remove members, roles?).
+
+ UI/UX polish (dark mode, alerts, confirmation dialogs).
+
+Summary:
+
+You’ve built the foundation of a household expense tracking app with:
+
+Authentication & user management
+
+Household creation/joining via invites
+
+Transaction recording (manual + file upload)
+
+Global filtering system
+
+Responsive dashboard layout
+
+The app is mostly functional; the next work involves connecting all the pieces (Filters, Transactions page, and file ingestion improvements) and refining the user experience.

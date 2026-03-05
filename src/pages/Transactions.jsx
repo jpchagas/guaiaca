@@ -1,5 +1,4 @@
-// src/pages/Transactions.jsx
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import {
   Box,
   Paper,
@@ -40,6 +39,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../firebaseConfig";
+import { useMonthFilter } from "../contexts/MonthFilterContext";
 
 const ROWS_PER_PAGE_OPTIONS = [5, 10, 25];
 
@@ -72,6 +72,8 @@ export default function Transactions() {
   const [editing, setEditing] = useState({});
   const [activeCell, setActiveCell] = useState(null);
   const inputRef = useRef(null);
+
+  const { selectedMonth, selectedYear } = useMonthFilter();
 
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -111,6 +113,18 @@ export default function Transactions() {
       setLoading(false);
     }
   }
+
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((tx) => {
+      if (!tx.date) return false;
+
+      const txDate = new Date(tx.date);
+      const monthMatch = txDate.getMonth() === selectedMonth;
+      const yearMatch = txDate.getFullYear() === selectedYear;
+
+      return monthMatch && yearMatch;
+    });
+  }, [transactions, selectedMonth, selectedYear]);
 
   const deleteTransaction = async (id) => {
     try {
@@ -242,7 +256,7 @@ export default function Transactions() {
     const id = tx.id;
     const isActive = activeCell?.id === id && activeCell.field === field;
     const local = editing[id] || {};
-    const value = isActive ? (local[field] ?? "") : tx[field];
+    const value = isActive ? local[field] ?? "" : tx[field];
 
     if (!isActive) {
       if (field === "classification") {
@@ -401,10 +415,10 @@ export default function Transactions() {
     );
   }
 
-  if (transactions.length === 0) {
+  if (filteredTransactions.length === 0) {
     return (
       <Box textAlign="center" mt={8}>
-        <Typography>No transactions found.</Typography>
+        <Typography>No transactions found for selected period.</Typography>
       </Box>
     );
   }
@@ -432,7 +446,7 @@ export default function Transactions() {
             </TableHead>
 
             <TableBody>
-              {transactions
+              {filteredTransactions
                 .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                 .map((tx) => (
                   <TableRow key={tx.id} hover>
@@ -454,7 +468,6 @@ export default function Transactions() {
                       </TableCell>
                     ))}
 
-                    {/* DELETE BUTTON */}
                     <TableCell align="center">
                       <IconButton
                         color="error"
@@ -472,7 +485,7 @@ export default function Transactions() {
 
         <TablePagination
           component="div"
-          count={transactions.length}
+          count={filteredTransactions.length}
           page={page}
           onPageChange={(_, p) => setPage(p)}
           rowsPerPage={rowsPerPage}

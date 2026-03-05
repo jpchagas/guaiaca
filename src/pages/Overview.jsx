@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   Box,
   Typography,
@@ -7,8 +7,10 @@ import {
   CircularProgress,
   Button,
 } from "@mui/material";
+
 import { db } from "../firebaseConfig";
 import { collection, getDocs, query, where } from "firebase/firestore";
+
 import {
   PieChart,
   Pie,
@@ -17,7 +19,9 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+
 import { seedMockData } from "../utils/seedData";
+import { useFilters } from "../context/FilterContext"; // ✅ GLOBAL FILTER
 
 const COLORS = ["#4CAF50", "#FFB300", "#5E239D", "#1C1C1E", "#E5E5E5"];
 
@@ -25,36 +29,88 @@ export default function Overview() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const { filters } = useFilters(); // ✅ Global filters
+
   useEffect(() => {
-    const fetchTransactions = async () => {
-      try {
-        const householdId = localStorage.getItem("householdId");
-        if (!householdId) {
-          console.warn("No householdId found in localStorage.");
-          setTransactions([]);
-          return;
-        }
-
-        const q = query(
-          collection(db, "transactions"),
-          where("householdId", "==", householdId)
-        );
-        const querySnapshot = await getDocs(q);
-        const data = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        setTransactions(data);
-      } catch (error) {
-        console.error("Error fetching transactions:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchTransactions();
   }, []);
 
+  async function fetchTransactions() {
+    try {
+      const householdId = localStorage.getItem("householdId");
+
+      if (!householdId) {
+        setTransactions([]);
+        return;
+      }
+
+      const q = query(
+        collection(db, "transactions"),
+        where("householdId", "==", householdId)
+      );
+
+      const snapshot = await getDocs(q);
+
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      setTransactions(data);
+    } catch (error) {
+      console.error("Error fetching transactions:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ✅ APPLY GLOBAL FILTERS
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((tx) => {
+      if (filters?.startDate && tx.date < filters.startDate) return false;
+      if (filters?.endDate && tx.date > filters.endDate) return false;
+      return true;
+    });
+  }, [transactions, filters]);
+
+  // ✅ AGGREGATIONS
+  const { income, expenses, investments } = useMemo(() => {
+    let income = 0;
+    let expenses = 0;
+    let investments = 0;
+
+    filteredTransactions.forEach((t) => {
+      const amount = Number(t.amount) || 0;
+
+      if (t.classification === "revenue") income += amount;
+      if (t.classification === "expense") expenses += amount;
+      if (t.classification === "investment") investments += amount;
+    });
+
+    return { income, expenses, investments };
+  }, [filteredTransactions]);
+
+  const balance = income - expenses - investments;
+
+  // ✅ PIE DATA
+  const pieData = useMemo(() => {
+    const expenseTransactions = filteredTransactions.filter(
+      (t) => t.classification === "expense"
+    );
+
+    const categoryTotals = expenseTransactions.reduce((acc, t) => {
+      const key = t.category || "Other";
+      acc[key] = (acc[key] || 0) + (Number(t.amount) || 0);
+      return acc;
+    }, {});
+
+    return Object.entries(categoryTotals).map(([name, value]) => ({
+      name,
+      value,
+    }));
+  }, [filteredTransactions]);
+
+  // ---------- LOADING ----------
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="60vh">
@@ -63,49 +119,20 @@ export default function Overview() {
     );
   }
 
+  // ---------- EMPTY ----------
   if (transactions.length === 0) {
     return (
       <Box textAlign="center" mt={8}>
         <Typography variant="h6" color="text.secondary" mb={2}>
           No transactions yet. Start by adding your first one!
         </Typography>
+
         <Button variant="contained" color="warning" onClick={seedMockData}>
           Seed Mock Data
         </Button>
       </Box>
     );
   }
-
-  // 💰 Aggregate totals by classification
-  const income = transactions
-    .filter((t) => t.classification === "revenue")
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const expenses = transactions
-    .filter((t) => t.classification === "expense")
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const investments = transactions
-    .filter((t) => t.classification === "investment")
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const balance = income - expenses - investments;
-
-  // 📊 Prepare pie chart (only expenses)
-  const expenseTransactions = transactions.filter(
-    (t) => t.classification === "expense"
-  );
-
-  const categoryTotals = expenseTransactions.reduce((acc, t) => {
-    const key = t.category || "Other";
-    acc[key] = (acc[key] || 0) + t.amount;
-    return acc;
-  }, {});
-
-  const pieData = Object.entries(categoryTotals).map(([name, value]) => ({
-    name,
-    value,
-  }));
 
   return (
     <Box sx={{ px: { xs: 0, sm: 2 }, py: 1 }}>
@@ -114,12 +141,13 @@ export default function Overview() {
       </Typography>
 
       <Grid container spacing={3}>
-        {/* Balance Card */}
+        {/* Balance */}
         <Grid item xs={12} sm={3}>
           <Paper elevation={3} sx={{ p: 3, borderRadius: 3 }}>
             <Typography variant="subtitle2" color="text.secondary">
               Total Balance
             </Typography>
+
             <Typography
               variant="h5"
               fontWeight="bold"
@@ -130,43 +158,46 @@ export default function Overview() {
           </Paper>
         </Grid>
 
-        {/* Income Card */}
+        {/* Income */}
         <Grid item xs={12} sm={3}>
           <Paper elevation={3} sx={{ p: 3, borderRadius: 3 }}>
             <Typography variant="subtitle2" color="text.secondary">
               Total Income
             </Typography>
+
             <Typography variant="h5" fontWeight="bold" color="success.main">
               ${income.toFixed(2)}
             </Typography>
           </Paper>
         </Grid>
 
-        {/* Expenses Card */}
+        {/* Expenses */}
         <Grid item xs={12} sm={3}>
           <Paper elevation={3} sx={{ p: 3, borderRadius: 3 }}>
             <Typography variant="subtitle2" color="text.secondary">
               Total Expenses
             </Typography>
+
             <Typography variant="h5" fontWeight="bold" color="error.main">
               ${expenses.toFixed(2)}
             </Typography>
           </Paper>
         </Grid>
 
-        {/* Investments Card */}
+        {/* Investments */}
         <Grid item xs={12} sm={3}>
           <Paper elevation={3} sx={{ p: 3, borderRadius: 3 }}>
             <Typography variant="subtitle2" color="text.secondary">
               Investments
             </Typography>
+
             <Typography variant="h5" fontWeight="bold" color="warning.main">
               ${investments.toFixed(2)}
             </Typography>
           </Paper>
         </Grid>
 
-        {/* Pie Chart */}
+        {/* PIE CHART */}
         <Grid item xs={12}>
           <Paper
             elevation={3}
@@ -174,12 +205,12 @@ export default function Overview() {
               p: 3,
               borderRadius: 3,
               height: { xs: 300, sm: 400 },
-              overflow: "hidden",
             }}
           >
             <Typography variant="subtitle1" mb={2}>
               Spending by Category
             </Typography>
+
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -192,12 +223,10 @@ export default function Overview() {
                   label
                 >
                   {pieData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={COLORS[index % COLORS.length]}
-                    />
+                    <Cell key={index} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
+
                 <Tooltip />
                 <Legend />
               </PieChart>
