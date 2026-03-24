@@ -67,8 +67,8 @@ export default function Overview() {
   // ✅ APPLY GLOBAL FILTERS
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
-      if (filters?.startDate && tx.date < filters.startDate) return false;
-      if (filters?.endDate && tx.date > filters.endDate) return false;
+      if (filters?.dateFrom && tx.date < filters.dateFrom) return false;
+      if (filters?.dateTo && tx.date > filters.dateTo) return false;
       return true;
     });
   }, [transactions, filters]);
@@ -142,7 +142,7 @@ export default function Overview() {
 
       <Grid container spacing={3}>
         {/* Balance */}
-        <Grid item xs={12} sm={3}>
+        <Grid size={{ xs: 12, sm: 3 }}>
           <Paper elevation={3} sx={{ p: 3, borderRadius: 3 }}>
             <Typography variant="subtitle2" color="text.secondary">
               Total Balance
@@ -159,7 +159,7 @@ export default function Overview() {
         </Grid>
 
         {/* Income */}
-        <Grid item xs={12} sm={3}>
+        <Grid size={{ xs: 12, sm: 3 }}>
           <Paper elevation={3} sx={{ p: 3, borderRadius: 3 }}>
             <Typography variant="subtitle2" color="text.secondary">
               Total Income
@@ -172,7 +172,7 @@ export default function Overview() {
         </Grid>
 
         {/* Expenses */}
-        <Grid item xs={12} sm={3}>
+        <Grid size={{ xs: 12, sm: 3 }}>
           <Paper elevation={3} sx={{ p: 3, borderRadius: 3 }}>
             <Typography variant="subtitle2" color="text.secondary">
               Total Expenses
@@ -185,7 +185,7 @@ export default function Overview() {
         </Grid>
 
         {/* Investments */}
-        <Grid item xs={12} sm={3}>
+        <Grid size={{ xs: 12, sm: 3 }}>
           <Paper elevation={3} sx={{ p: 3, borderRadius: 3 }}>
             <Typography variant="subtitle2" color="text.secondary">
               Investments
@@ -198,7 +198,7 @@ export default function Overview() {
         </Grid>
 
         {/* PIE CHART */}
-        <Grid item xs={12}>
+        <Grid size={{ xs: 12 }}>
           <Paper
             elevation={3}
             sx={{

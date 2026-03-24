@@ -109,185 +109,206 @@ Would you like me to make it match your brand theme (green highlights, rounded c
 
 Would you like me to add a bar chart below the pie showing monthly income vs expenses next? It gives a great visual trend.
 
+🚀 Suggested Roadmap (2–3 Weeks)
+Week 1
+Build Transactions page (CRUD)
+Unify FilterContext
+Connect filters to Firestore queries
+Week 2
+Improve file ingestion (preview + validation)
+Add pagination or infinite scroll
+Add delete/edit UX polish
+Week 3 (optional but powerful)
+Household roles
+Charts improvements (trends over time)
+Dark mode 🌙
+
 ## Current Context
 
-Guaiaca Project — Progress Summary
+🧾 Guaiaca Project — Progress Summary (Updated)
 
-Date: 2026-03-04
+Date: 2026-03-24
 Project: Personal Finance & Household Expense Management App
 
-1. Authentication & User Management
+1. 🔐 Authentication & User Management
+✅ Implemented
+Signup, Login, and Password Reset using Firebase Auth
+User authentication state handled globally (onAuthStateChanged)
+👤 User Document (Firestore)
 
-Signup / Login / Forgot Password
+Stores:
 
-Users can sign up with name, email, and password (Signup.jsx).
-
-Login authenticates with Firebase Auth (Login.jsx) and retrieves householdId from Firestore.
-
-Password reset functionality implemented via Firebase Auth (ForgotPassword.jsx).
-
-User Firestore Document
-
-Stores name, email, householdId, createdAt.
-
-householdId starts as null until the user joins or creates a household.
-
-2. Household Management
-
-Settings & Household Operations (Settings.jsx)
-
-Users can create a household if they don’t have one.
-
-Add members via email, or generate invite links.
-
-Household document includes name, members, createdAt.
-
-Joining a Household
-
-JoinHousehold.jsx and Invite.jsx allow users to join via invite link (householdId query param).
-
-Updates both user document (householdId) and household document (members array).
-
-3. Dashboard & Navigation
-
-Dashboard Layout (DashboardLayout.jsx)
-
-Persistent sidebar with Overview, Transactions, and Settings pages.
-
-Mobile responsive design with BottomNavigation for small screens.
-
-Includes SpeedDial for quick transaction entry:
-
-Upload CSV/Excel files.
-
-Add manually via a form.
-
-Handles logout globally.
-
-Month filter (selectedMonth) implemented; can integrate with FilterContext for global filtering.
-
-4. Transactions & Overview
-
-Overview Page (Overview.jsx)
-
-Fetches transactions for the current household.
-
-Supports global filters via FilterContext (classification, category, method, dateFrom, dateTo).
-
-Computes:
-
-Total Income
-
-Total Expenses
-
-Investments
-
-Total Balance
-
-Displays pie chart for expenses by category.
-
-Option to seed mock transactions if none exist.
-
-Transactions Management
-
-Manual addition of transactions (with parceling support) via DashboardLayout.
-
-File ingestion system implemented:
-
-parseFile handles CSV/Excel parsing.
-
-ingestTransactionsList writes transactions to Firestore.
-
-5. State & Context
-
-Global Filters (FilterContext.jsx)
-
-Provides a central place to store filters (classification, method, category, dateFrom, dateTo).
-
-Overview.jsx uses it to filter transactions.
-
-Suggestion: integrate month filter (selectedMonth) into this context to unify filtering across pages.
-
-6. Navigation & Routing
-
-React Router used for:
-
-/ → Login
-
-/signup → Sign Up
-
-/forgot-password → Password reset
-
+name
+email
+householdId
+createdAt
+householdId is initially null until the user joins or creates a household
+⚠️ Notes
+Authentication flow is stable
+App correctly blocks access to protected routes
+2. 🏠 Household Management
+✅ Implemented
+Users can create a household
+Users can join via invite link (/invite?householdId=...)
+Members can be added via email
+Invite link generation supported
+📦 Household Document
+name
+members (array of user IDs)
+createdAt
+⚠️ Known Constraints
+Firestore rules enforce strict access based on householdId
+Member fetching uses where("__name__", "in", [...]) (limited to 10 users per query)
+Permission errors may occur if rules and queries are not aligned
+🔧 Needs Improvement
+Better member management (remove users, roles, permissions)
+Improve error handling for permission failures
+3. 🧭 Dashboard & Navigation
+✅ Implemented
+Persistent sidebar (desktop)
+Bottom navigation (mobile)
+Page routing via React Router:
 /home → Overview
+/home/transactions
+/home/settings
+Global logout handling
+➕ SpeedDial (FAB)
+Upload transaction file
+Add transaction manually
+⚠️ Fixes Applied
+SpeedDial interaction fixed (z-index + layout issues)
+Dialogs now properly triggered
+4. 💰 Transactions & Overview
+📊 Overview Page
+✅ Features
+Fetches transactions by householdId
+Displays:
+Total Income
+Total Expenses
+Investments
+Balance
+Pie chart: expenses by category
+Mock data seeding option
+⚠️ Fixes Applied
+Fixed crash caused by missing context provider
+Defensive filtering (filters?.)
+📋 Transactions Page
+✅ Features
+List transactions with:
+Pagination
+Inline editing
+Delete functionality
+Editable fields:
+description, amount, category, classification, method, etc.
+⚠️ Notes
+Depends on month filtering (currently separate context)
+Works but not yet unified with global filters
+📥 Transaction Ingestion
+✅ Implemented
+File upload (CSV / Excel)
+parseFile → parses input
+ingestTransactionsList → writes to Firestore
+🔧 Needs Improvement
+Error handling for invalid formats
+Validation before ingestion
+5. 🧠 State Management & Context
+✅ Implemented
+FilterContext for:
+classification
+category
+method
+date range
+⚠️ Current Issue (Important)
+Filtering logic is split across multiple sources:
+FilterContext
+selectedMonth (DashboardLayout)
+MonthFilterContext (Transactions)
 
-/home/transactions → Transactions
+👉 This creates inconsistency across pages
 
-/home/settings → Settings
+🔧 Next Step
+Unify all filters into a single global filtering system
+6. 🔥 Firebase Integration
+✅ Auth
+createUserWithEmailAndPassword
+signInWithEmailAndPassword
+sendPasswordResetEmail
+✅ Firestore Collections
+users
+name, email, householdId
+households
+name, members
+transactions
+description, amount, classification, category
+date, method, card
+parcel info
+householdId
+createdAt
+🔐 Security Rules
+✅ Implemented
+Access restricted by householdId
 
-/invite → Join via invite link
+Helper function:
 
-DashboardLayout wraps /home routes for consistent layout.
-
-7. Styling & UI
-
-Uses MUI components across the app:
-
-Container, Paper, Typography, Button, TextField, Drawer, SpeedDial, etc.
-
-Responsive layout:
-
-Permanent sidebar on desktop.
-
-Bottom navigation on mobile.
-
-Visual feedback for:
-
+userHouseholdId()
+⚠️ Known Issues
+“Missing or insufficient permissions” errors in some queries
+UI does not always handle permission failures gracefully
+7. 🎨 UI & Styling
+✅ Implemented
+MUI components across the app
+Responsive design:
+Sidebar (desktop)
+Bottom navigation (mobile)
+Feedback components:
 Loading (CircularProgress)
+Alerts & Snackbar
+⚠️ Fixes Applied
+MUI Grid v2 warnings identified (migration needed)
+SpeedDial rendering issues fixed
+🔧 Needs Improvement
+Complete migration to MUI Grid v2
+UI consistency and spacing
+Dark mode polish
+8. ⚠️ Stability & Error Handling
+🚨 Current Gaps
+No Error Boundary implemented
+App can crash if context is missing
+Limited user-facing error feedback
+🔧 Required Improvements
+Add global Error Boundary
+Standardize error handling across async operations
+Improve feedback for Firestore errors
+9. 🚀 Next Steps / Roadmap
+🔥 Priority 1 — Stability & Architecture
+Wrap app properly with providers (FilterContext)
+Unify ALL filters into a single context
+Fix Firestore query + rules alignment
+Add global Error Boundary
+⚙️ Priority 2 — Core Feature Completion
+Finalize Transactions page UX
+Add confirmation dialogs (delete/edit)
+Improve empty and loading states
+📊 Priority 3 — Data & Performance
+Pagination / lazy loading
+Optimize Firestore queries
+Improve ingestion validation
+🎨 Priority 4 — UI/UX Polish
+Complete MUI Grid v2 migration
+Improve layout consistency
+Centralize Snackbar/alerts system
+Enhance mobile experience
+🧠 Final Assessment
 
-Success & error messages (Alert, color-coded Typography).
+The Guaiaca app is currently:
 
-8. Firebase Integration
+✅ Feature-complete at a functional level
+⚠️ Inconsistent at an architectural level
+🔧 Entering stabilization and refinement phase
 
-Auth: createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail.
+You’ve successfully built:
 
-Firestore:
-
-Users collection (users) → name, email, householdId.
-
-Households collection (households) → name, members.
-
-Transactions collection (transactions) → description, amount, classification, category, parcel info, date, method, card, householdId, createdAt.
-
-Firestore Operations:
-
-setDoc, updateDoc, getDoc, getDocs, arrayUnion, serverTimestamp.
-
-9. Next Steps / To Do
-
- Integrate DashboardLayout month filter fully with FilterContext for global filtering.
-
- Build Transactions page to list, edit, and delete transactions.
-
- Enhance file ingestion and parser error handling.
-
- Add pagination / lazy loading for transactions list.
-
- Improve member management in households (remove members, roles?).
-
- UI/UX polish (dark mode, alerts, confirmation dialogs).
-
-Summary:
-
-You’ve built the foundation of a household expense tracking app with:
-
-Authentication & user management
-
-Household creation/joining via invites
-
-Transaction recording (manual + file upload)
-
-Global filtering system
-
-Responsive dashboard layout
-
-The app is mostly functional; the next work involves connecting all the pieces (Filters, Transactions page, and file ingestion improvements) and refining the user experience.
+Authentication system
+Household-based data model
+Transaction tracking (manual + file ingestion)
+Responsive dashboard UI

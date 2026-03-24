@@ -19,5 +19,11 @@ export function FilterProvider({ children }) {
 }
 
 export function useFilters() {
-  return useContext(FilterContext);
+  const context = useContext(FilterContext);
+
+  if (!context) {
+    throw new Error("useFilters must be used within a FilterProvider");
+  }
+
+  return context;
 }

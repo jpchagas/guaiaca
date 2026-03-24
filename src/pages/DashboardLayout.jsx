@@ -36,7 +36,6 @@ import {
   Home,
   AccountBalanceWallet,
   Settings,
-  CloudUpload,
 } from "@mui/icons-material";
 import AddIcon from "@mui/icons-material/Add";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
@@ -44,10 +43,10 @@ import EditNoteIcon from "@mui/icons-material/EditNote";
 import { useNavigate, Outlet, useLocation } from "react-router-dom";
 import { signOut } from "firebase/auth";
 import { auth, db } from "../firebaseConfig";
-import { collection, doc, addDoc, serverTimestamp, getDoc } from "firebase/firestore";
-import { ingestTransactionsList } from "../services/ingestion/ingestTransactionsList";
-import { parseFile } from "../services/parsers/parseFile";
+import { collection, addDoc, doc, getDoc, serverTimestamp } from "firebase/firestore";
 import dayjs from "dayjs";
+import { parseFile } from "../services/parsers/parseFile";
+import { ingestTransactionsList } from "../services/ingestion/ingestTransactionsList";
 
 const drawerWidth = 240;
 const categories = ["Food", "Utilities", "Income", "Entertainment", "Health", "Other"];
@@ -59,8 +58,8 @@ export default function DashboardLayout() {
   const [file, setFile] = useState(null);
   const [selectedBank, setSelectedBank] = useState("");
   const [error, setError] = useState(null);
+  const [fabOpen, setFabOpen] = useState(false);
 
-  // ✅ Shared month filter
   const [selectedMonth, setSelectedMonth] = useState(dayjs().format("YYYY-MM"));
 
   const [formData, setFormData] = useState({
@@ -125,15 +124,6 @@ export default function DashboardLayout() {
     }
   };
 
-  const handleDrop = (e) => {
-    e.preventDefault();
-    const droppedFile = e.dataTransfer.files?.[0];
-    if (droppedFile) {
-      const fakeEvent = { target: { files: [droppedFile] } };
-      handleFileChange(fakeEvent);
-    }
-  };
-
   const handleFormChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -154,15 +144,11 @@ export default function DashboardLayout() {
       }
 
       await addDoc(collection(db, "transactions"), {
-        description: formData.description,
+        ...formData,
         amount: parseFloat(formData.amount),
-        classification: formData.classification,
-        category: formData.category || "Other",
-        date: formData.date,
-        parcel: formData.parcel ? parseInt(formData.parcel) : 1,
-        parcels: formData.parcels ? parseInt(formData.parcels) : 1,
+        parcel: parseInt(formData.parcel),
+        parcels: parseInt(formData.parcels),
         responsible: formData.responsible || user.displayName || user.email,
-        method: formData.method || "transfer",
         card: formData.method === "credit card" ? formData.card || "" : "",
         householdId,
         createdAt: serverTimestamp(),
@@ -178,52 +164,35 @@ export default function DashboardLayout() {
 
   const drawer = (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <Typography
-        variant="h5"
-        sx={{ my: 2, textAlign: "center", fontWeight: 700, color: "primary.main" }}
-      >
+      <Typography variant="h5" sx={{ my: 2, textAlign: "center", fontWeight: 700, color: "primary.main" }}>
         Guaiaca 💰
       </Typography>
-
       <Divider />
-
       <List>
         <ListItem disablePadding>
           <ListItemButton onClick={() => navigate("/home")}>
-            <ListItemIcon>
-              <Home color="primary" />
-            </ListItemIcon>
+            <ListItemIcon><Home color="primary" /></ListItemIcon>
             <ListItemText primary="Overview" />
           </ListItemButton>
         </ListItem>
-
         <ListItem disablePadding>
           <ListItemButton onClick={() => navigate("/home/transactions")}>
-            <ListItemIcon>
-              <AccountBalanceWallet color="primary" />
-            </ListItemIcon>
+            <ListItemIcon><AccountBalanceWallet color="primary" /></ListItemIcon>
             <ListItemText primary="Transactions" />
           </ListItemButton>
         </ListItem>
-
         <ListItem disablePadding>
           <ListItemButton onClick={() => navigate("/home/settings")}>
-            <ListItemIcon>
-              <Settings color="primary" />
-            </ListItemIcon>
+            <ListItemIcon><Settings color="primary" /></ListItemIcon>
             <ListItemText primary="Settings" />
           </ListItemButton>
         </ListItem>
       </List>
-
       <Divider sx={{ mt: "auto" }} />
-
       <List>
         <ListItem disablePadding>
           <ListItemButton onClick={handleLogout}>
-            <ListItemIcon>
-              <Logout color="error" />
-            </ListItemIcon>
+            <ListItemIcon><Logout color="error" /></ListItemIcon>
             <ListItemText primary="Logout" />
           </ListItemButton>
         </ListItem>
@@ -251,12 +220,7 @@ export default function DashboardLayout() {
                 <MenuIcon />
               </IconButton>
             )}
-
-            <Typography variant="h6" noWrap>
-              {getPageTitle()}
-            </Typography>
-
-            {/* ✅ Month Filter */}
+            <Typography variant="h6" noWrap>{getPageTitle()}</Typography>
             <TextField
               type="month"
               size="small"
@@ -265,15 +229,13 @@ export default function DashboardLayout() {
               sx={{ minWidth: 150 }}
             />
           </Box>
-
           {isMobile && (
-            <IconButton color="error" onClick={handleLogout}>
-              <Logout />
-            </IconButton>
+            <IconButton color="error" onClick={handleLogout}><Logout /></IconButton>
           )}
         </Toolbar>
       </AppBar>
 
+      {/* Drawer */}
       {!isMobile && (
         <Box component="nav" sx={{ width: drawerWidth, flexShrink: 0 }}>
           <Drawer
@@ -286,54 +248,83 @@ export default function DashboardLayout() {
         </Box>
       )}
 
+      {/* Main Content */}
       <Box
         component="main"
-        sx={{
-          flexGrow: 1,
-          p: { xs: 2, sm: 3 },
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
-          mt: 8,
-          mb: 10,
-        }}
+        sx={{ flexGrow: 1, p: { xs: 2, sm: 3 }, width: { sm: `calc(100% - ${drawerWidth}px)` }, mt: 8, mb: 10 }}
       >
-        {/* ✅ Shared context */}
         <Outlet context={{ selectedMonth, setSelectedMonth }} />
-
-        {!location.pathname.includes("login") && (
-          <>
-            <SpeedDial
-              ariaLabel="Add transaction options"
-              sx={{
-                position: "fixed",
-                bottom: 90,
-                right: 16,
-                "& .MuiSpeedDial-fab": {
-                  bgcolor: theme.palette.primary.main,
-                  color: "#fff",
-                  "&:hover": { bgcolor: theme.palette.primary.dark },
-                },
-              }}
-              icon={<SpeedDialIcon icon={<AddIcon />} />}
-            >
-              <SpeedDialAction
-                key="Upload File"
-                icon={<UploadFileIcon />}
-                tooltipTitle="Upload File"
-                onClick={() => setUploadDialogOpen(true)}
-              />
-              <SpeedDialAction
-                key="Add Manually"
-                icon={<EditNoteIcon />}
-                tooltipTitle="Add Manually"
-                onClick={() => setManualDialogOpen(true)}
-              />
-            </SpeedDial>
-
-            {/* Upload Dialog + Manual Dialog remain unchanged */}
-          </>
-        )}
       </Box>
 
+      {/* SpeedDial (outside main Box so it won't get clipped) */}
+      {!location.pathname.includes("login") && (
+        <SpeedDial
+          ariaLabel="Add transaction options"
+          sx={{
+            position: "fixed",
+            bottom: 90,
+            right: 16,
+            zIndex: 1500,
+            "& .MuiSpeedDial-fab": {
+              bgcolor: theme.palette.primary.main,
+              color: "#fff",
+              "&:hover": { bgcolor: theme.palette.primary.dark },
+            },
+          }}
+          icon={<SpeedDialIcon icon={<AddIcon />} />}
+          onOpen={() => setFabOpen(true)}
+          onClose={() => setFabOpen(false)}
+          open={fabOpen}
+        >
+          <SpeedDialAction
+            key="Upload File"
+            icon={<UploadFileIcon />}
+            tooltipTitle="Upload File"
+            onClick={() => setUploadDialogOpen(true)}
+          />
+          <SpeedDialAction
+            key="Add Manually"
+            icon={<EditNoteIcon />}
+            tooltipTitle="Add Manually"
+            onClick={() => setManualDialogOpen(true)}
+          />
+        </SpeedDial>
+      )}
+
+      {/* Upload Dialog */}
+      <Dialog open={uploadDialogOpen} onClose={() => setUploadDialogOpen(false)}>
+        <DialogTitle>Upload Transaction File</DialogTitle>
+        <DialogContent>
+          <input type="file" onChange={handleFileChange} ref={fileInputRef} />
+          {error && <Alert severity="error">{error}</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUploadDialogOpen(false)}>Cancel</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Manual Transaction Dialog */}
+      <Dialog open={manualDialogOpen} onClose={() => setManualDialogOpen(false)}>
+        <DialogTitle>Add Transaction Manually</DialogTitle>
+        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 300 }}>
+          {["description", "amount", "category", "date", "parcel", "parcels"].map((field) => (
+            <TextField
+              key={field}
+              label={field.charAt(0).toUpperCase() + field.slice(1)}
+              name={field}
+              type={field === "amount" || field === "parcel" || field === "parcels" ? "number" : "text"}
+              value={formData[field]}
+              onChange={handleFormChange}
+            />
+          ))}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setManualDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleManualSubmit}>Add</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Bottom Navigation for mobile */}
       {isMobile && (
         <Paper sx={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 1000 }} elevation={3}>
           <BottomNavigation

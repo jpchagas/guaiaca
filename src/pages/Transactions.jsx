@@ -39,7 +39,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../firebaseConfig";
-import { useMonthFilter } from "../contexts/MonthFilterContext";
+import { useFilters } from "../context/FilterContext";
 
 const ROWS_PER_PAGE_OPTIONS = [5, 10, 25];
 
@@ -73,7 +73,7 @@ export default function Transactions() {
   const [activeCell, setActiveCell] = useState(null);
   const inputRef = useRef(null);
 
-  const { selectedMonth, selectedYear } = useMonthFilter();
+  const { filters } = useFilters();
 
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -115,16 +115,17 @@ export default function Transactions() {
   }
 
   const filteredTransactions = useMemo(() => {
-    return transactions.filter((tx) => {
-      if (!tx.date) return false;
+  return transactions.filter((tx) => {
+    if (!tx.date) return false;
 
-      const txDate = new Date(tx.date);
-      const monthMatch = txDate.getMonth() === selectedMonth;
-      const yearMatch = txDate.getFullYear() === selectedYear;
+    const txDate = new Date(tx.date);
 
-      return monthMatch && yearMatch;
-    });
-  }, [transactions, selectedMonth, selectedYear]);
+    if (filters?.dateFrom && txDate < new Date(filters.dateFrom)) return false;
+    if (filters?.dateTo && txDate > new Date(filters.dateTo)) return false;
+
+    return true;
+  });
+}, [transactions, filters]);
 
   const deleteTransaction = async (id) => {
     try {
