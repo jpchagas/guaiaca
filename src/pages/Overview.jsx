@@ -2,7 +2,6 @@ import { useEffect, useState, useMemo } from "react";
 import {
   Box,
   Typography,
-  Grid,
   Paper,
   CircularProgress,
   Button,
@@ -21,7 +20,7 @@ import {
 } from "recharts";
 
 import { seedMockData } from "../utils/seedData";
-import { useFilters } from "../context/FilterContext"; // ✅ GLOBAL FILTER
+import { useFilters } from "../context/FilterContext";
 
 const COLORS = ["#4CAF50", "#FFB300", "#5E239D", "#1C1C1E", "#E5E5E5"];
 
@@ -29,7 +28,7 @@ export default function Overview() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const { filters } = useFilters(); // ✅ Global filters
+  const { filters } = useFilters();
 
   useEffect(() => {
     fetchTransactions();
@@ -64,7 +63,7 @@ export default function Overview() {
     }
   }
 
-  // ✅ APPLY GLOBAL FILTERS
+  // ✅ FILTERS
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
       if (filters?.dateFrom && tx.date < filters.dateFrom) return false;
@@ -135,105 +134,98 @@ export default function Overview() {
   }
 
   return (
-    <Box sx={{ px: { xs: 0, sm: 2 }, py: 1 }}>
-      <Typography variant="h5" fontWeight="bold" mb={3}>
+    <Box>
+      <Typography variant="h5" fontWeight="bold" mb={2}>
         Overview
       </Typography>
 
-      <Grid container spacing={3}>
+      {/* ✅ Horizontal scroll cards (mobile-native) */}
+      <Box
+        sx={{
+          display: "flex",
+          gap: 2,
+          overflowX: "auto",
+          pb: 1,
+        }}
+      >
         {/* Balance */}
-        <Grid size={{ xs: 12, sm: 3 }}>
-          <Paper elevation={3} sx={{ p: 3, borderRadius: 3 }}>
-            <Typography variant="subtitle2" color="text.secondary">
-              Total Balance
-            </Typography>
-
-            <Typography
-              variant="h5"
-              fontWeight="bold"
-              sx={{ color: balance >= 0 ? "success.main" : "error.main" }}
-            >
-              ${balance.toFixed(2)}
-            </Typography>
-          </Paper>
-        </Grid>
+        <Paper sx={{ p: 2, minWidth: 160 }}>
+          <Typography variant="subtitle2" color="text.secondary">
+            Balance
+          </Typography>
+          <Typography
+            variant="h6"
+            fontWeight="bold"
+            sx={{ color: balance >= 0 ? "success.main" : "error.main" }}
+          >
+            ${balance.toFixed(2)}
+          </Typography>
+        </Paper>
 
         {/* Income */}
-        <Grid size={{ xs: 12, sm: 3 }}>
-          <Paper elevation={3} sx={{ p: 3, borderRadius: 3 }}>
-            <Typography variant="subtitle2" color="text.secondary">
-              Total Income
-            </Typography>
-
-            <Typography variant="h5" fontWeight="bold" color="success.main">
-              ${income.toFixed(2)}
-            </Typography>
-          </Paper>
-        </Grid>
+        <Paper sx={{ p: 2, minWidth: 160 }}>
+          <Typography variant="subtitle2" color="text.secondary">
+            Income
+          </Typography>
+          <Typography variant="h6" fontWeight="bold" color="success.main">
+            ${income.toFixed(2)}
+          </Typography>
+        </Paper>
 
         {/* Expenses */}
-        <Grid size={{ xs: 12, sm: 3 }}>
-          <Paper elevation={3} sx={{ p: 3, borderRadius: 3 }}>
-            <Typography variant="subtitle2" color="text.secondary">
-              Total Expenses
-            </Typography>
-
-            <Typography variant="h5" fontWeight="bold" color="error.main">
-              ${expenses.toFixed(2)}
-            </Typography>
-          </Paper>
-        </Grid>
+        <Paper sx={{ p: 2, minWidth: 160 }}>
+          <Typography variant="subtitle2" color="text.secondary">
+            Expenses
+          </Typography>
+          <Typography variant="h6" fontWeight="bold" color="error.main">
+            ${expenses.toFixed(2)}
+          </Typography>
+        </Paper>
 
         {/* Investments */}
-        <Grid size={{ xs: 12, sm: 3 }}>
-          <Paper elevation={3} sx={{ p: 3, borderRadius: 3 }}>
-            <Typography variant="subtitle2" color="text.secondary">
-              Investments
-            </Typography>
+        <Paper sx={{ p: 2, minWidth: 160 }}>
+          <Typography variant="subtitle2" color="text.secondary">
+            Investments
+          </Typography>
+          <Typography variant="h6" fontWeight="bold" color="warning.main">
+            ${investments.toFixed(2)}
+          </Typography>
+        </Paper>
+      </Box>
 
-            <Typography variant="h5" fontWeight="bold" color="warning.main">
-              ${investments.toFixed(2)}
-            </Typography>
-          </Paper>
-        </Grid>
+      {/* ✅ Chart */}
+      <Paper
+        sx={{
+          p: 2,
+          mt: 2,
+          height: 320,
+        }}
+      >
+        <Typography variant="subtitle1" mb={2}>
+          Spending by Category
+        </Typography>
 
-        {/* PIE CHART */}
-        <Grid size={{ xs: 12 }}>
-          <Paper
-            elevation={3}
-            sx={{
-              p: 3,
-              borderRadius: 3,
-              height: { xs: 300, sm: 400 },
-            }}
-          >
-            <Typography variant="subtitle1" mb={2}>
-              Spending by Category
-            </Typography>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={pieData}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              outerRadius={100}
+              label
+            >
+              {pieData.map((entry, index) => (
+                <Cell key={index} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Pie>
 
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={120}
-                  label
-                >
-                  {pieData.map((entry, index) => (
-                    <Cell key={index} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </Paper>
-        </Grid>
-      </Grid>
+            <Tooltip />
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>
+      </Paper>
     </Box>
   );
 }
