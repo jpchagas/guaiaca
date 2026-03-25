@@ -2,11 +2,11 @@ import { useEffect, useState, lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebaseConfig";
-import { CircularProgress, Box } from "@mui/material";
+
 import ForgotPassword from "./pages/ForgotPassword";
 import Invite from "./pages/Invite";
+import SplashScreen from "./components/SplashScreen";
 
-// Lazy loading das páginas
 const Login = lazy(() => import("./pages/Login"));
 const Signup = lazy(() => import("./pages/Signup"));
 const DashboardLayout = lazy(() => import("./pages/DashboardLayout"));
@@ -16,72 +16,65 @@ const Settings = lazy(() => import("./pages/Settings"));
 
 function App() {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      setLoading(false);
+      setAuthLoading(false);
     });
-    return () => unsubscribe();
+
+    const timer = setTimeout(() => {
+      setShowSplash(false);
+    }, 2000);
+
+    return () => {
+      unsubscribe();
+      clearTimeout(timer);
+    };
   }, []);
 
-  if (loading) {
-    return (
-      <Box
-        sx={{
-          height: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <CircularProgress color="success" />
-      </Box>
-    );
+  // ✅ Splash always first
+  if (showSplash) {
+    return <SplashScreen />;
+  }
+
+  // ✅ No spinner — just wait silently
+  if (authLoading) {
+    return null;
   }
 
   return (
     <BrowserRouter
-      future={{
-        v7_startTransition: true,
-        v7_relativeSplatPath: true,
-      }}
-    >
-      <Suspense
-        fallback={
-          <Box
-            sx={{
-              height: "100vh",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <CircularProgress color="success" />
-          </Box>
-        }
-      >
-        <Routes>
-          <Route path="/" element={user ? <Navigate to="/home" /> : <Login />} />
-          <Route
-            path="/signup"
-            element={user ? <Navigate to="/home" /> : <Signup />}
-          />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/invite" element={<Invite />} />
-          <Route
-            path="/home"
-            element={user ? <DashboardLayout /> : <Navigate to="/" />}
-          >
-            <Route index element={<Overview />} />
-            <Route path="transactions" element={<Transactions />} />
-            <Route path="settings" element={<Settings />} />
+  future={{
+    v7_startTransition: true,
+    v7_relativeSplatPath: true,
+  }}
+>
+  <Suspense fallback={null}>
+    <Routes>
+      <Route path="/" element={user ? <Navigate to="/home" /> : <Login />} />
 
-          </Route>
-        </Routes>
-      </Suspense>
-    </BrowserRouter>
+      <Route
+        path="/signup"
+        element={user ? <Navigate to="/home" /> : <Signup />}
+      />
+
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/invite" element={<Invite />} />
+
+      <Route
+        path="/home"
+        element={user ? <DashboardLayout /> : <Navigate to="/" />}
+      >
+        <Route index element={<Overview />} />
+        <Route path="transactions" element={<Transactions />} />
+        <Route path="settings" element={<Settings />} />
+      </Route>
+    </Routes>
+  </Suspense>
+</BrowserRouter>
   );
 }
 
