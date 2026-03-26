@@ -15,14 +15,14 @@ import {
   Pie,
   Cell,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from "recharts";
 
 import { seedMockData } from "../utils/seedData";
 import { useFilters } from "../context/FilterContext";
 
-const COLORS = ["#4CAF50", "#FFB300", "#5E239D", "#1C1C1E", "#E5E5E5"];
+// ✅ USE THEME COLORS ONLY
+const COLORS = ["#2E7D32", "#66BB6A", "#FFB300", "#E0E0E0"];
 
 export default function Overview() {
   const [transactions, setTransactions] = useState([]);
@@ -57,13 +57,12 @@ export default function Overview() {
 
       setTransactions(data);
     } catch (error) {
-      console.error("Error fetching transactions:", error);
+      console.error(error);
     } finally {
       setLoading(false);
     }
   }
 
-  // ✅ FILTERS
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
       if (filters?.dateFrom && tx.date < filters.dateFrom) return false;
@@ -72,7 +71,6 @@ export default function Overview() {
     });
   }, [transactions, filters]);
 
-  // ✅ AGGREGATIONS
   const { income, expenses, investments } = useMemo(() => {
     let income = 0;
     let expenses = 0;
@@ -91,7 +89,6 @@ export default function Overview() {
 
   const balance = income - expenses - investments;
 
-  // ✅ PIE DATA
   const pieData = useMemo(() => {
     const expenseTransactions = filteredTransactions.filter(
       (t) => t.classification === "expense"
@@ -109,25 +106,23 @@ export default function Overview() {
     }));
   }, [filteredTransactions]);
 
-  // ---------- LOADING ----------
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="60vh">
+      <Box display="flex" justifyContent="center" mt={6}>
         <CircularProgress />
       </Box>
     );
   }
 
-  // ---------- EMPTY ----------
   if (transactions.length === 0) {
     return (
       <Box textAlign="center" mt={8}>
         <Typography variant="h6" color="text.secondary" mb={2}>
-          No transactions yet. Start by adding your first one!
+          No transactions yet
         </Typography>
 
-        <Button variant="contained" color="warning" onClick={seedMockData}>
-          Seed Mock Data
+        <Button variant="contained" onClick={seedMockData}>
+          Add Sample Data
         </Button>
       </Box>
     );
@@ -135,96 +130,74 @@ export default function Overview() {
 
   return (
     <Box>
-      <Typography variant="h5" fontWeight="bold" mb={2}>
-        Overview
-      </Typography>
-
-      {/* ✅ Horizontal scroll cards (mobile-native) */}
-      <Box
-        sx={{
-          display: "flex",
-          gap: 2,
-          overflowX: "auto",
-          pb: 1,
-        }}
-      >
-        {/* Balance */}
-        <Paper sx={{ p: 2, minWidth: 160 }}>
-          <Typography variant="subtitle2" color="text.secondary">
-            Balance
-          </Typography>
-          <Typography
-            variant="h6"
-            fontWeight="bold"
-            sx={{ color: balance >= 0 ? "success.main" : "error.main" }}
-          >
-            ${balance.toFixed(2)}
-          </Typography>
-        </Paper>
-
-        {/* Income */}
-        <Paper sx={{ p: 2, minWidth: 160 }}>
-          <Typography variant="subtitle2" color="text.secondary">
-            Income
-          </Typography>
-          <Typography variant="h6" fontWeight="bold" color="success.main">
-            ${income.toFixed(2)}
-          </Typography>
-        </Paper>
-
-        {/* Expenses */}
-        <Paper sx={{ p: 2, minWidth: 160 }}>
-          <Typography variant="subtitle2" color="text.secondary">
-            Expenses
-          </Typography>
-          <Typography variant="h6" fontWeight="bold" color="error.main">
-            ${expenses.toFixed(2)}
-          </Typography>
-        </Paper>
-
-        {/* Investments */}
-        <Paper sx={{ p: 2, minWidth: 160 }}>
-          <Typography variant="subtitle2" color="text.secondary">
-            Investments
-          </Typography>
-          <Typography variant="h6" fontWeight="bold" color="warning.main">
-            ${investments.toFixed(2)}
-          </Typography>
-        </Paper>
-      </Box>
-
-      {/* ✅ Chart */}
+      {/* 🔥 HERO BALANCE (GAME CHANGER) */}
       <Paper
         sx={{
-          p: 2,
-          mt: 2,
-          height: 320,
+          p: 3,
+          mb: 3,
+          backgroundColor: "primary.main",
+          color: "white",
+          borderRadius: 4,
         }}
       >
+        <Typography variant="body2" sx={{ opacity: 0.8 }}>
+          Total Balance
+        </Typography>
+
+        <Typography variant="h4" fontWeight={700}>
+          ${balance.toFixed(2)}
+        </Typography>
+      </Paper>
+
+      {/* 💼 POCKET CARDS */}
+      <Box sx={{ display: "flex", gap: 2, overflowX: "auto", pb: 1 }}>
+        {[
+          { label: "Income", value: income, color: "success.main" },
+          { label: "Expenses", value: expenses, color: "error.main" },
+          { label: "Investments", value: investments, color: "warning.main" },
+        ].map((item) => (
+          <Paper
+            key={item.label}
+            sx={{
+              p: 2,
+              minWidth: 140,
+              borderRadius: 3,
+            }}
+          >
+            <Typography variant="body2" color="text.secondary">
+              {item.label}
+            </Typography>
+
+            <Typography
+              variant="h6"
+              fontWeight={600}
+              sx={{ color: item.color }}
+            >
+              ${item.value.toFixed(2)}
+            </Typography>
+          </Paper>
+        ))}
+      </Box>
+
+      {/* 📊 CHART */}
+      <Paper sx={{ p: 2, mt: 3 }}>
         <Typography variant="subtitle1" mb={2}>
           Spending by Category
         </Typography>
 
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={pieData}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              outerRadius={100}
-              label
-            >
-              {pieData.map((entry, index) => (
-                <Cell key={index} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Pie>
+        <Box sx={{ height: 280 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={pieData} dataKey="value" outerRadius={90}>
+                {pieData.map((entry, index) => (
+                  <Cell key={index} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
 
-            <Tooltip />
-            <Legend />
-          </PieChart>
-        </ResponsiveContainer>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </Box>
       </Paper>
     </Box>
   );

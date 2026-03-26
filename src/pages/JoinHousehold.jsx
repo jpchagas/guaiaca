@@ -9,18 +9,14 @@ import {
   CircularProgress,
 } from "@mui/material";
 import { auth, db } from "../firebaseConfig";
-import {
-  doc,
-  getDoc,
-  updateDoc,
-  arrayUnion,
-} from "firebase/firestore";
+import { doc, getDoc, updateDoc, arrayUnion } from "firebase/firestore";
 
 export default function JoinHousehold() {
   const [searchParams] = useSearchParams();
-  const [householdName, setHouseholdName] = useState("");
+  const [household, setHousehold] = useState(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [joined, setJoined] = useState(false);
   const navigate = useNavigate();
 
   const householdId = searchParams.get("householdId");
@@ -37,7 +33,7 @@ export default function JoinHousehold() {
         const householdRef = doc(db, "households", householdId);
         const snap = await getDoc(householdRef);
         if (snap.exists()) {
-          setHouseholdName(snap.data().name || "Unnamed Household");
+          setHousehold({ id: snap.id, ...snap.data() });
         } else {
           setMessage("❌ Household not found.");
         }
@@ -48,6 +44,7 @@ export default function JoinHousehold() {
         setLoading(false);
       }
     };
+
     fetchHousehold();
   }, [householdId]);
 
@@ -55,25 +52,25 @@ export default function JoinHousehold() {
     const user = auth.currentUser;
     if (!user) {
       setMessage("⚠️ You need to log in first.");
+      navigate("/"); // redirect to login
       return;
     }
 
     try {
-      // Update user document
-      await updateDoc(doc(db, "users", user.uid), {
-        householdId,
-      });
+      // Add householdId to user
+      await updateDoc(doc(db, "users", user.uid), { householdId });
 
-      // Add user to the household members list
+      // Add user to household members
       await updateDoc(doc(db, "households", householdId), {
         members: arrayUnion(user.uid),
       });
 
-      setMessage("✅ Joined household successfully!");
+      setJoined(true);
+      setMessage("✅ You’ve successfully joined this household!");
       setTimeout(() => navigate("/home"), 1500);
     } catch (err) {
       console.error("Error joining household:", err);
-      setMessage("❌ Failed to join household.");
+      setMessage("❌ Failed to join household. Please try again.");
     }
   };
 
@@ -92,12 +89,16 @@ export default function JoinHousehold() {
           Join Household
         </Typography>
 
-        {message && <Alert severity="info" sx={{ mb: 2 }}>{message}</Alert>}
+        {message && (
+          <Alert severity={message.startsWith("✅") ? "success" : "info"} sx={{ mb: 2 }}>
+            {message}
+          </Alert>
+        )}
 
-        {householdName && (
+        {household && !joined && (
           <>
             <Typography mb={3}>
-              You’ve been invited to join <strong>{householdName}</strong>
+              You’ve been invited to join <strong>{household.name}</strong>
             </Typography>
             <Button variant="contained" onClick={handleJoin}>
               Join Household

@@ -9,8 +9,12 @@ import {
   Typography,
   Paper,
   Link,
+  Stack,
+  Alert,
+  Divider,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
+import { Link as RouterLink } from "react-router-dom";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -24,10 +28,12 @@ export default function ForgotPassword() {
     setMessage("");
     setError("");
     setLoading(true);
+
     try {
       await sendPasswordResetEmail(auth, email);
       setMessage("✅ Password reset email sent! Check your inbox.");
     } catch (err) {
+      console.error(err);
       setError("❌ Failed to send reset email. Please check your email address.");
     } finally {
       setLoading(false);
@@ -36,50 +42,59 @@ export default function ForgotPassword() {
 
   return (
     <Container maxWidth="xs" sx={{ mt: 8 }}>
-      <Paper sx={{ p: 4, textAlign: "center" }}>
-        <Typography variant="h5" mb={2}>
+      <Paper
+        elevation={3}
+        sx={{
+          p: 4,
+          borderRadius: 3,
+          textAlign: "center",
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+        }}
+      >
+        <Typography variant="h5" fontWeight={600}>
           Forgot Password
         </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Enter your email to receive a password reset link
+        </Typography>
+
+        {message && <Alert severity="success">{message}</Alert>}
+        {error && <Alert severity="error">{error}</Alert>}
 
         <form onSubmit={handleResetPassword}>
-          <TextField
-            fullWidth
-            label="Email"
-            type="email"
-            margin="normal"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
+          <Stack spacing={2} mt={1}>
+            <TextField
+              fullWidth
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
 
-          {message && (
-            <Typography color="success.main" variant="body2" mt={1}>
-              {message}
-            </Typography>
-          )}
-          {error && (
-            <Typography color="error" variant="body2" mt={1}>
-              {error}
-            </Typography>
-          )}
-
-          <Button
-            type="submit"
-            fullWidth
-            variant="contained"
-            sx={{ mt: 3, mb: 2 }}
-            disabled={loading}
-          >
-            {loading ? "Sending..." : "Send Reset Email"}
-          </Button>
-
-          <Link
-            onClick={() => navigate("/")}
-            sx={{ display: "block", textAlign: "center", mt: 2, cursor: "pointer" }}
-          >
-            Back to Login
-          </Link>
+            <Button
+              type="submit"
+              fullWidth
+              variant="contained"
+              disabled={loading}
+            >
+              {loading ? "Sending..." : "Send Reset Email"}
+            </Button>
+          </Stack>
         </form>
+
+        <Divider sx={{ my: 2 }} />
+
+        <Link
+          component={RouterLink}
+          to="/"
+          underline="hover"
+          sx={{ display: "block", mt: 1 }}
+        >
+          Back to Login
+        </Link>
       </Paper>
     </Container>
   );

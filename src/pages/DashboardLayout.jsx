@@ -5,7 +5,6 @@ import {
   Typography,
   IconButton,
   Box,
-  CssBaseline,
   BottomNavigation,
   BottomNavigationAction,
   Paper,
@@ -17,6 +16,7 @@ import {
   Button,
   TextField,
   Alert,
+  Container,
 } from "@mui/material";
 
 import {
@@ -49,14 +49,8 @@ export default function DashboardLayout() {
   const [formData, setFormData] = useState({
     description: "",
     amount: "",
-    classification: "expense",
     category: "",
     date: "",
-    parcel: 1,
-    parcels: 1,
-    responsible: "",
-    method: "transfer",
-    card: "",
   });
 
   const navigate = useNavigate();
@@ -91,12 +85,10 @@ export default function DashboardLayout() {
 
       if (parsedTransactions?.length) {
         await ingestTransactionsList(parsedTransactions);
-        alert("✅ Transactions imported!");
       } else {
-        alert("⚠️ No valid transactions found.");
+        setError("No valid transactions found.");
       }
     } catch (err) {
-      console.error(err);
       setError(err.message || "Unexpected error");
     }
   };
@@ -109,12 +101,12 @@ export default function DashboardLayout() {
   const handleManualSubmit = async () => {
     try {
       const user = auth.currentUser;
-      if (!user) return alert("User not logged in");
+      if (!user) return;
 
       const userSnap = await getDoc(doc(db, "users", user.uid));
       const householdId = userSnap.data()?.householdId;
 
-      if (!householdId) return alert("No household");
+      if (!householdId) return;
 
       await addDoc(collection(db, "transactions"), {
         ...formData,
@@ -123,41 +115,35 @@ export default function DashboardLayout() {
         createdAt: serverTimestamp(),
       });
 
-      alert("Transaction added!");
       setManualDialogOpen(false);
     } catch (error) {
-      console.error(error);
-      alert("Error adding transaction");
+      setError("Error adding transaction");
     }
   };
 
   return (
-    <Box sx={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      <CssBaseline />
-
+    <Box sx={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
+      
       {/* TOP BAR */}
-      <AppBar position="fixed" color="default">
-        <Toolbar sx={{ display: "flex", justifyContent: "space-between" }}>
-          <Typography variant="h6">{getPageTitle()}</Typography>
-          <IconButton color="error" onClick={handleLogout}>
+      <AppBar position="fixed">
+        <Toolbar sx={{ justifyContent: "space-between" }}>
+          <Typography variant="h6" fontWeight={600}>
+            {getPageTitle()}
+          </Typography>
+
+          <IconButton onClick={handleLogout}>
             <Logout />
           </IconButton>
         </Toolbar>
       </AppBar>
 
       {/* CONTENT */}
-      <Box
-        component="main"
-        sx={{
-          mt: 8,
-          mb: 10,
-          px: 2,
-          width: "100%",
-          maxWidth: 600,
-          mx: "auto",
-        }}
-      >
-        <Outlet />
+      <Box sx={{ flex: 1, mt: 8, mb: 12 }}>
+        <Container maxWidth="sm" sx={{ px: 2 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Outlet />
+          </Box>
+        </Container>
       </Box>
 
       {/* BOTTOM NAV */}
@@ -167,9 +153,9 @@ export default function DashboardLayout() {
           bottom: 0,
           left: 0,
           right: 0,
-          zIndex: 1000,
+          borderTop: "1px solid rgba(0,0,0,0.06)",
         }}
-        elevation={3}
+        elevation={0}
       >
         <BottomNavigation
           value={getNavIndex()}
@@ -180,33 +166,39 @@ export default function DashboardLayout() {
           }}
         >
           <BottomNavigationAction label="Overview" icon={<Home />} />
-          <BottomNavigationAction
-            label="Transactions"
-            icon={<AccountBalanceWallet />}
-          />
+          <BottomNavigationAction label="Transactions" icon={<AccountBalanceWallet />} />
           <BottomNavigationAction label="Settings" icon={<Settings />} />
         </BottomNavigation>
       </Paper>
 
-      {/* FAB (REPLACED SPEEDDIAL) */}
+      {/* FAB */}
       <Fab
-        color="primary"
         onClick={() => setManualDialogOpen(true)}
         sx={{
           position: "fixed",
-          bottom: 80,
-          right: 16,
+          bottom: 88,
+          right: 20,
         }}
       >
         <AddIcon />
       </Fab>
 
-      {/* ADD TRANSACTION DIALOG */}
-      <Dialog open={manualDialogOpen} onClose={() => setManualDialogOpen(false)}>
+      {/* DIALOG */}
+      <Dialog
+        open={manualDialogOpen}
+        onClose={() => setManualDialogOpen(false)}
+        fullWidth
+      >
         <DialogTitle>Add Transaction</DialogTitle>
 
-        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {/* Upload option */}
+        <DialogContent
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+            pt: 2,
+          }}
+        >
           <Button
             variant="outlined"
             onClick={() => fileInputRef.current.click()}
@@ -223,23 +215,9 @@ export default function DashboardLayout() {
 
           {error && <Alert severity="error">{error}</Alert>}
 
-          {/* Manual fields */}
-          <TextField
-            label="Description"
-            name="description"
-            onChange={handleFormChange}
-          />
-          <TextField
-            label="Amount"
-            name="amount"
-            type="number"
-            onChange={handleFormChange}
-          />
-          <TextField
-            label="Category"
-            name="category"
-            onChange={handleFormChange}
-          />
+          <TextField label="Description" name="description" onChange={handleFormChange} />
+          <TextField label="Amount" name="amount" type="number" onChange={handleFormChange} />
+          <TextField label="Category" name="category" onChange={handleFormChange} />
           <TextField
             label="Date"
             name="date"
@@ -249,9 +227,11 @@ export default function DashboardLayout() {
           />
         </DialogContent>
 
-        <DialogActions>
-          <Button onClick={() => setManualDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleManualSubmit} variant="contained">
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setManualDialogOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleManualSubmit}>
             Add
           </Button>
         </DialogActions>

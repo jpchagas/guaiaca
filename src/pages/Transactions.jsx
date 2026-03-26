@@ -4,16 +4,17 @@ import {
   Paper,
   Typography,
   CircularProgress,
-  Chip,
   IconButton,
   Snackbar,
   Alert,
   Stack,
+  Dialog,
+  DialogTitle,
+  DialogActions,
+  Button,
 } from "@mui/material";
 
-import {
-  Delete as DeleteIcon,
-} from "@mui/icons-material";
+import { Delete as DeleteIcon } from "@mui/icons-material";
 
 import {
   collection,
@@ -39,6 +40,8 @@ export default function Transactions() {
     message: "",
   });
 
+  const [deleteId, setDeleteId] = useState(null);
+
   useEffect(() => {
     fetchTransactions();
   }, []);
@@ -62,7 +65,7 @@ export default function Transactions() {
       const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
 
       setTransactions(data);
-    } catch (err) {
+    } catch {
       setSnackbar({
         open: true,
         severity: "error",
@@ -73,7 +76,6 @@ export default function Transactions() {
     }
   }
 
-  // ✅ FILTERS
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
       if (!tx.date) return false;
@@ -87,23 +89,25 @@ export default function Transactions() {
     });
   }, [transactions, filters]);
 
-  const deleteTransaction = async (id) => {
+  const confirmDelete = async () => {
     try {
-      await deleteDoc(doc(db, "transactions", id));
+      await deleteDoc(doc(db, "transactions", deleteId));
 
-      setTransactions((prev) => prev.filter((t) => t.id !== id));
+      setTransactions((prev) => prev.filter((t) => t.id !== deleteId));
 
       setSnackbar({
         open: true,
         severity: "success",
         message: "Transaction deleted.",
       });
-    } catch (err) {
+    } catch {
       setSnackbar({
         open: true,
         severity: "error",
         message: "Failed to delete transaction.",
       });
+    } finally {
+      setDeleteId(null);
     }
   };
 
@@ -115,70 +119,76 @@ export default function Transactions() {
       : "warning.main";
   };
 
-  // ---------- LOADING ----------
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="60vh">
+      <Box display="flex" justifyContent="center" mt={6}>
         <CircularProgress />
       </Box>
     );
   }
 
-  // ---------- EMPTY ----------
   if (filteredTransactions.length === 0) {
     return (
       <Box textAlign="center" mt={8}>
-        <Typography>No transactions found.</Typography>
+        <Typography color="text.secondary">
+          No transactions found
+        </Typography>
       </Box>
     );
   }
 
   return (
     <Box>
-      <Typography variant="h5" fontWeight="bold" mb={2}>
-        Transactions
-      </Typography>
-
-      {/* ✅ Card List */}
       <Stack spacing={2}>
         {filteredTransactions.map((tx) => {
           const amount = Number(tx.amount) || 0;
 
           return (
-            <Paper key={tx.id} sx={{ p: 2, borderRadius: 3 }}>
-              {/* Top Row */}
-              <Box display="flex" justifyContent="space-between" alignItems="center">
-                <Typography fontWeight="bold">
+            <Paper
+              key={tx.id}
+              sx={{
+                p: 2,
+                borderRadius: 3,
+                position: "relative",
+              }}
+            >
+              {/* Pocket tab */}
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: 0,
+                  left: 16,
+                  width: 32,
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: "primary.main",
+                }}
+              />
+
+              {/* Top */}
+              <Box display="flex" justifyContent="space-between">
+                <Typography fontWeight={600}>
                   {tx.description || "No description"}
                 </Typography>
 
                 <Typography
-                  fontWeight="bold"
+                  fontWeight={700}
                   sx={{ color: getColor(tx.classification) }}
                 >
                   ${amount.toFixed(2)}
                 </Typography>
               </Box>
 
-              {/* Middle */}
-              <Box mt={1} display="flex" gap={1} flexWrap="wrap">
-                <Chip
-                  label={tx.classification}
-                  size="small"
-                  sx={{
-                    bgcolor: getColor(tx.classification),
-                    color: "white",
-                  }}
-                />
-
-                <Chip label={tx.category || "Other"} size="small" variant="outlined" />
-
-                <Chip label={tx.method || "—"} size="small" variant="outlined" />
+              {/* Middle (cleaner than chips) */}
+              <Box mt={1}>
+                <Typography variant="body2" color="text.secondary">
+                  {tx.category || "Other"} • {tx.method || "—"}
+                </Typography>
               </Box>
 
               {/* Bottom */}
               <Box
-                mt={1}
+                mt={1.5}
                 display="flex"
                 justifyContent="space-between"
                 alignItems="center"
@@ -189,10 +199,9 @@ export default function Transactions() {
 
                 <IconButton
                   size="small"
-                  color="error"
-                  onClick={() => deleteTransaction(tx.id)}
+                  onClick={() => setDeleteId(tx.id)}
                 >
-                  <DeleteIcon />
+                  <DeleteIcon fontSize="small" />
                 </IconButton>
               </Box>
             </Paper>
@@ -200,10 +209,21 @@ export default function Transactions() {
         })}
       </Stack>
 
+      {/* Confirm delete */}
+      <Dialog open={!!deleteId} onClose={() => setDeleteId(null)}>
+        <DialogTitle>Delete this transaction?</DialogTitle>
+        <DialogActions>
+          <Button onClick={() => setDeleteId(null)}>Cancel</Button>
+          <Button color="error" onClick={confirmDelete}>
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Snackbar */}
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={3500}
+        autoHideDuration={3000}
         onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
       >
         <Alert severity={snackbar.severity}>{snackbar.message}</Alert>

@@ -1,23 +1,76 @@
-import { Typography, Container, Button } from "@mui/material";
+import { useEffect, useState } from "react";
+import { Typography, Container, Button, Box } from "@mui/material";
 import { signOut } from "firebase/auth";
-import { auth } from "../firebaseConfig";
+import { auth, db } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
+import { doc, getDoc } from "firebase/firestore";
 
-function Home() {
+export default function Home() {
+  const navigate = useNavigate();
+  const [userName, setUserName] = useState("");
 
-    const navigate = useNavigate();
-    
-    const handleLogout = async () => {
-        await signOut(auth);
-        navigate("/");
+  // Fetch current user name for greeting
+  useEffect(() => {
+    const fetchUserName = async () => {
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+
+      try {
+        const userRef = doc(db, "users", currentUser.uid);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          setUserName(userSnap.data().name || "");
+        }
+      } catch (err) {
+        console.error("Failed to fetch user name:", err);
+      }
     };
 
-    return (
-        <Container sx={{ textAlign: "center", mt: 10 }}>
-            <Typography variant="h4" color="primary"> Welcome to Guaiaca 💰</Typography>
-            <Button variant="outlined" color="warning" sx={{ mt: 4 }} onClick={handleLogout}> Logout </Button>
-        </Container>
-    );
-}
+    fetchUserName();
+  }, []);
 
-export default Home;
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      navigate("/");
+    } catch (err) {
+      console.error("Logout failed:", err);
+    }
+  };
+
+  return (
+    <Container
+      maxWidth="sm"
+      sx={{
+        textAlign: "center",
+        mt: 10,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 4,
+      }}
+    >
+      <Typography variant="h4" color="primary" gutterBottom>
+        Welcome {userName ? userName : ""} to Guaiaca 💰
+      </Typography>
+
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={() => navigate("/transactions")}
+        >
+          View Transactions
+        </Button>
+
+        <Button
+          variant="outlined"
+          color="warning"
+          onClick={handleLogout}
+        >
+          Logout
+        </Button>
+      </Box>
+    </Container>
+  );
+}
