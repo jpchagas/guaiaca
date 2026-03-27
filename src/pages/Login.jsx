@@ -1,11 +1,8 @@
 import { useState } from "react";
 import {
-  Box,
   Button,
-  Container,
   TextField,
   Typography,
-  Paper,
   Link,
   Divider,
   Stack,
@@ -14,8 +11,8 @@ import {
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth, db } from "../firebaseConfig";
 import { doc, getDoc } from "firebase/firestore";
-import { useNavigate } from "react-router-dom";
-import { Link as RouterLink } from "react-router-dom";
+import { useNavigate, Link as RouterLink } from "react-router-dom";
+import AuthLayout from "../components/AuthLayout";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -53,77 +50,59 @@ export default function Login() {
   };
 
   return (
-    <Container maxWidth="xs" sx={{ mt: 8 }}>
-      <Paper
-        elevation={3}
-        sx={{
-          p: 4,
-          borderRadius: 3,
-          textAlign: "center",
-          display: "flex",
-          flexDirection: "column",
-          gap: 2,
-        }}
-      >
-        <Typography variant="h5" fontWeight={600}>
-          Welcome Back 👋
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Sign in to access your dashboard
-        </Typography>
+    <AuthLayout
+      title="Welcome Back 👋"
+      subtitle="Sign in to access your dashboard"
+    >
+      {error && <Alert severity="error">{error}</Alert>}
 
-        {error && <Alert severity="error">{error}</Alert>}
+      <form onSubmit={handleLogin}>
+        <Stack spacing={2}>
+          <TextField
+            label="Email"
+            type="email"
+            fullWidth
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
 
-        <form onSubmit={handleLogin}>
-          <Stack spacing={2} mt={1}>
-            <TextField
-              label="Email"
-              type="email"
-              fullWidth
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-            <TextField
-              label="Password"
-              type="password"
-              fullWidth
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
+          <TextField
+            label="Password"
+            type="password"
+            fullWidth
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
 
-            <Button
-              type="submit"
-              variant="contained"
-              fullWidth
-              disabled={loading}
-            >
-              {loading ? "Signing In..." : "Sign In"}
-            </Button>
-          </Stack>
-        </form>
-
-        <Box textAlign="right">
-          <Link
-            component={RouterLink}
-            to="/forgot-password"
-            underline="hover"
-            sx={{ fontWeight: 500 }}
+          <Button
+            type="submit"
+            variant="contained"
+            fullWidth
+            disabled={loading}
           >
+            {loading ? "Signing In..." : "Sign In"}
+          </Button>
+        </Stack>
+      </form>
+
+      <Stack spacing={1}>
+        <Stack alignItems="flex-end">
+          <Link component={RouterLink} to="/forgot-password" underline="hover">
             Forgot password?
           </Link>
-        </Box>
+        </Stack>
 
-        <Divider sx={{ my: 2 }} />
+        <Divider />
 
-        <Typography variant="body2">
+        <Typography variant="body2" textAlign="center">
           Don’t have an account?{" "}
           <Link component={RouterLink} to="/signup" underline="hover">
             Sign up
           </Link>
         </Typography>
-      </Paper>
-    </Container>
+      </Stack>
+    </AuthLayout>
   );
 }
