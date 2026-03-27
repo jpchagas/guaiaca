@@ -4,7 +4,8 @@ import App from './App'
 import { ThemeProvider, CssBaseline } from '@mui/material'
 import './styles.css'
 import { FilterProvider } from "./context/FilterContext"
-import { theme } from "./theme" // ✅ IMPORT
+import { AccountProvider } from "./context/AccountContext" // ✅ NEW
+import { theme } from "./theme"
 
 import { registerSW } from 'virtual:pwa-register'
 registerSW()
@@ -14,7 +15,9 @@ createRoot(document.getElementById('root')).render(
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <FilterProvider>
-        <App />
+        <AccountProvider> {/* ✅ GLOBAL ACCOUNT STATE */}
+          <App />
+        </AccountProvider>
       </FilterProvider>
     </ThemeProvider>
   </React.StrictMode>

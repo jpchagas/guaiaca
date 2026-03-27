@@ -1,13 +1,12 @@
-import React from "react";
-import { useEffect, useState, lazy, Suspense } from "react";
+import React, { useEffect, useState, lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "./firebaseConfig";
+import { auth, db } from "./firebaseConfig";
+import { doc, getDoc, setDoc, serverTimestamp, collection } from "firebase/firestore";
 
 import ForgotPassword from "./pages/ForgotPassword";
 import Invite from "./pages/Invite";
 import SplashScreen from "./components/SplashScreen";
-
 import { Box, CircularProgress } from "@mui/material";
 
 // Lazy pages
@@ -68,12 +67,51 @@ function App() {
     const start = Date.now();
     const MIN_SPLASH = 1200;
 
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
       const elapsed = Date.now() - start;
       const remaining = Math.max(MIN_SPLASH - elapsed, 0);
 
-      setTimeout(() => {
-        setUser(u);
+      setTimeout(async () => {
+        if (u) {
+          try {
+            const userDoc = await getDoc(doc(db, "users", u.uid));
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+
+              // 🔹 Legacy householdId migration
+              if ((!userData.accounts || userData.accounts.length === 0) && userData.householdId) {
+                const accountRef = doc(collection(db, "accounts"));
+                await setDoc(accountRef, {
+                  name: "Family Account",
+                  type: "household",
+                  members: [u.uid],
+                  createdAt: serverTimestamp(),
+                });
+
+                await setDoc(doc(db, "users", u.uid), {
+                  ...userData,
+                  accounts: [accountRef.id],
+                }, { merge: true });
+
+                localStorage.setItem("currentAccountId", accountRef.id);
+                localStorage.setItem("householdId", userData.householdId);
+              } else if (userData.accounts && userData.accounts.length > 0) {
+                localStorage.setItem("currentAccountId", userData.accounts[0]);
+              }
+
+              setUser(u);
+            } else {
+              console.warn("User doc not found");
+              setUser(null);
+            }
+          } catch (err) {
+            console.error("Error fetching user data:", err);
+            setUser(u);
+          }
+        } else {
+          setUser(null);
+        }
+
         setAuthLoading(false);
         setShowSplash(false);
       }, remaining);
@@ -83,14 +121,9 @@ function App() {
   }, []);
 
   // Splash first
-  if (showSplash) {
-    return <SplashScreen />;
-  }
+  if (showSplash) return <SplashScreen />;
 
-  // Silent auth resolution
-  if (authLoading) {
-    return null;
-  }
+  if (authLoading) return null;
 
   return (
     <ErrorBoundary>
@@ -103,22 +136,13 @@ function App() {
         <Suspense fallback={<PageLoader />}>
           <Routes>
             {/* Public */}
-            <Route
-              path="/"
-              element={!user ? <Login /> : <Navigate to="/home" />}
-            />
-            <Route
-              path="/signup"
-              element={!user ? <Signup /> : <Navigate to="/home" />}
-            />
+            <Route path="/" element={!user ? <Login /> : <Navigate to="/home" />} />
+            <Route path="/signup" element={!user ? <Signup /> : <Navigate to="/home" />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/invite" element={<Invite />} />
 
             {/* Private */}
-            <Route
-              path="/home"
-              element={user ? <DashboardLayout /> : <Navigate to="/" />}
-            >
+            <Route path="/home" element={user ? <DashboardLayout /> : <Navigate to="/" />}>
               <Route index element={<Overview />} />
               <Route path="transactions" element={<Transactions />} />
               <Route path="settings" element={<Settings />} />

@@ -6,35 +6,35 @@ import { Button, CircularProgress, Typography, Paper, Box } from "@mui/material"
 
 export default function Invite() {
   const [searchParams] = useSearchParams();
-  const [household, setHousehold] = useState(null);
+  const [account, setAccount] = useState(null);
   const [loading, setLoading] = useState(true);
   const [joined, setJoined] = useState(false);
   const navigate = useNavigate();
 
-  const householdId = searchParams.get("householdId");
+  const accountId = searchParams.get("accountId"); // changed
 
   useEffect(() => {
-    const fetchHousehold = async () => {
-      if (!householdId) {
+    const fetchAccount = async () => {
+      if (!accountId) {
         setLoading(false);
         return;
       }
 
       try {
-        const ref = doc(db, "households", householdId);
+        const ref = doc(db, "accounts", accountId); // changed
         const snap = await getDoc(ref);
         if (snap.exists()) {
-          setHousehold({ id: snap.id, ...snap.data() });
+          setAccount({ id: snap.id, ...snap.data() });
         }
       } catch (err) {
-        console.error("Error fetching household:", err);
+        console.error("Error fetching account:", err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchHousehold();
-  }, [householdId]);
+    fetchAccount();
+  }, [accountId]);
 
   const handleJoin = async () => {
     const user = auth.currentUser;
@@ -45,23 +45,29 @@ export default function Invite() {
     }
 
     try {
-      // Add householdId to user
       const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, { householdId });
 
-      // Add user to household members
-      const householdRef = doc(db, "households", householdId);
-      await updateDoc(householdRef, {
+      // Add account to user's array of accounts
+      await updateDoc(userRef, {
+        accounts: arrayUnion(accountId),
+      });
+
+      // Add user to account members
+      const accountRef = doc(db, "accounts", accountId);
+      await updateDoc(accountRef, {
         members: arrayUnion(user.uid),
       });
 
       setJoined(true);
 
+      // Save current account locally
+      localStorage.setItem("currentAccountId", accountId);
+
       // Redirect after short delay
       setTimeout(() => navigate("/home"), 2000);
     } catch (err) {
-      console.error("Failed to join household:", err);
-      alert("❌ Failed to join household. Please try again.");
+      console.error("Failed to join account:", err);
+      alert("❌ Failed to join account. Please try again.");
     }
   };
 
@@ -76,15 +82,15 @@ export default function Invite() {
   return (
     <Box sx={{ display: "flex", justifyContent: "center", mt: 10 }}>
       <Paper sx={{ p: 4, textAlign: "center", minWidth: 300 }}>
-        {household ? (
+        {account ? (
           <>
             <Typography variant="h5" gutterBottom>
-              Join Household: {household.name}
+              Join Account: {account.name}
             </Typography>
 
             {joined ? (
               <Typography color="success.main" sx={{ mt: 2 }}>
-                ✅ You’ve successfully joined this household!
+                ✅ You’ve successfully joined this account!
               </Typography>
             ) : (
               <Button
@@ -93,7 +99,7 @@ export default function Invite() {
                 sx={{ mt: 2 }}
                 onClick={handleJoin}
               >
-                Join Household
+                Join Account
               </Button>
             )}
           </>

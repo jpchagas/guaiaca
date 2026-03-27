@@ -1,76 +1,73 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import {
-  Box,
-  Button,
-  Typography,
-  Paper,
-  Alert,
-  CircularProgress,
-} from "@mui/material";
+import { Box, Button, Typography, Paper, Alert, CircularProgress } from "@mui/material";
 import { auth, db } from "../firebaseConfig";
 import { doc, getDoc, updateDoc, arrayUnion } from "firebase/firestore";
 
-export default function JoinHousehold() {
+export default function JoinAccount() {
   const [searchParams] = useSearchParams();
-  const [household, setHousehold] = useState(null);
+  const [account, setAccount] = useState(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [joined, setJoined] = useState(false);
   const navigate = useNavigate();
 
-  const householdId = searchParams.get("householdId");
+  const accountId = searchParams.get("accountId"); // changed
 
   useEffect(() => {
-    const fetchHousehold = async () => {
-      if (!householdId) {
-        setMessage("❌ Invalid or missing household ID.");
+    const fetchAccount = async () => {
+      if (!accountId) {
+        setMessage("❌ Invalid or missing account ID.");
         setLoading(false);
         return;
       }
 
       try {
-        const householdRef = doc(db, "households", householdId);
-        const snap = await getDoc(householdRef);
+        const accountRef = doc(db, "accounts", accountId); // changed
+        const snap = await getDoc(accountRef);
         if (snap.exists()) {
-          setHousehold({ id: snap.id, ...snap.data() });
+          setAccount({ id: snap.id, ...snap.data() });
         } else {
-          setMessage("❌ Household not found.");
+          setMessage("❌ Account not found.");
         }
       } catch (err) {
-        console.error("Error fetching household:", err);
-        setMessage("❌ Failed to load household.");
+        console.error("Error fetching account:", err);
+        setMessage("❌ Failed to load account.");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchHousehold();
-  }, [householdId]);
+    fetchAccount();
+  }, [accountId]);
 
   const handleJoin = async () => {
     const user = auth.currentUser;
     if (!user) {
       setMessage("⚠️ You need to log in first.");
-      navigate("/"); // redirect to login
+      navigate("/");
       return;
     }
 
     try {
-      // Add householdId to user
-      await updateDoc(doc(db, "users", user.uid), { householdId });
+      // Add account to user's array
+      await updateDoc(doc(db, "users", user.uid), {
+        accounts: arrayUnion(accountId),
+      });
 
-      // Add user to household members
-      await updateDoc(doc(db, "households", householdId), {
+      // Add user to account members
+      await updateDoc(doc(db, "accounts", accountId), {
         members: arrayUnion(user.uid),
       });
 
       setJoined(true);
-      setMessage("✅ You’ve successfully joined this household!");
+      setMessage("✅ You’ve successfully joined this account!");
+      localStorage.setItem("currentAccountId", accountId);
+
       setTimeout(() => navigate("/home"), 1500);
     } catch (err) {
-      console.error("Error joining household:", err);
-      setMessage("❌ Failed to join household. Please try again.");
+      console.error("Error joining account:", err);
+      setMessage("❌ Failed to join account. Please try again.");
     }
   };
 
@@ -86,7 +83,7 @@ export default function JoinHousehold() {
     <Box sx={{ maxWidth: 500, mx: "auto", mt: 8 }}>
       <Paper sx={{ p: 4, textAlign: "center" }}>
         <Typography variant="h5" mb={2}>
-          Join Household
+          Join Account
         </Typography>
 
         {message && (
@@ -95,13 +92,13 @@ export default function JoinHousehold() {
           </Alert>
         )}
 
-        {household && !joined && (
+        {account && !joined && (
           <>
             <Typography mb={3}>
-              You’ve been invited to join <strong>{household.name}</strong>
+              You’ve been invited to join <strong>{account.name}</strong>
             </Typography>
             <Button variant="contained" onClick={handleJoin}>
-              Join Household
+              Join Account
             </Button>
           </>
         )}

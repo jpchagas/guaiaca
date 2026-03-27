@@ -9,24 +9,26 @@ export default function Home() {
   const navigate = useNavigate();
   const [userName, setUserName] = useState("");
 
-  // Fetch current user name for greeting
+  // 🔥 Fetch current user info (ONLY name now)
   useEffect(() => {
-    const fetchUserName = async () => {
+    const fetchUserData = async () => {
       const currentUser = auth.currentUser;
       if (!currentUser) return;
 
       try {
         const userRef = doc(db, "users", currentUser.uid);
         const userSnap = await getDoc(userRef);
+
         if (userSnap.exists()) {
-          setUserName(userSnap.data().name || "");
+          const userData = userSnap.data();
+          setUserName(userData.name || "");
         }
       } catch (err) {
-        console.error("Failed to fetch user name:", err);
+        console.error("Failed to fetch user data:", err);
       }
     };
 
-    fetchUserName();
+    fetchUserData();
   }, []);
 
   const handleLogout = async () => {
@@ -51,14 +53,20 @@ export default function Home() {
       }}
     >
       <Typography variant="h4" color="primary" gutterBottom>
-        Welcome {userName ? userName : ""} to Guaiaca 💰
+        Welcome {userName} to Guaiaca 💰
       </Typography>
 
       <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <Button
           variant="contained"
-          color="primary"
-          onClick={() => navigate("/transactions")}
+          onClick={() => navigate("/home")}
+        >
+          Go to Overview
+        </Button>
+
+        <Button
+          variant="outlined"
+          onClick={() => navigate("/home/transactions")}
         >
           View Transactions
         </Button>

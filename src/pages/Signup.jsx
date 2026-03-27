@@ -9,7 +9,12 @@ import {
   Alert,
 } from "@mui/material";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import {
+  doc,
+  setDoc,
+  serverTimestamp,
+  collection,
+} from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { useNavigate, Link as RouterLink } from "react-router-dom";
 import AuthLayout from "../components/AuthLayout";
@@ -34,11 +39,23 @@ export default function Signup() {
         password
       );
 
+      // 🔥 1. Create personal account
+      const accountRef = doc(collection(db, "accounts"));
+
+      await setDoc(accountRef, {
+        name: `${name}'s Account`,
+        type: "personal",
+        members: [user.uid],
+        createdAt: serverTimestamp(),
+      });
+
+      // 🔥 2. Create user and link account
       await setDoc(doc(db, "users", user.uid), {
         name,
         email,
         createdAt: serverTimestamp(),
-        householdId: null,
+        householdId: null, // ⚠️ keep temporarily for migration
+        accounts: [accountRef.id], // ✅ NEW SYSTEM
       });
 
       navigate("/home");

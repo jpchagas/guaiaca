@@ -13,7 +13,6 @@ import {
   DialogActions,
   Button,
 } from "@mui/material";
-
 import { Delete as DeleteIcon } from "@mui/icons-material";
 
 import {
@@ -24,15 +23,16 @@ import {
   doc,
   deleteDoc,
 } from "firebase/firestore";
-
 import { db } from "../firebaseConfig";
 import { useFilters } from "../context/FilterContext";
+import { useOutletContext } from "react-router-dom"; // ✅ NEW
 
 export default function Transactions() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const { filters } = useFilters();
+  const { currentAccountId } = useOutletContext(); // ✅ GLOBAL ACCOUNT
 
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -42,30 +42,35 @@ export default function Transactions() {
 
   const [deleteId, setDeleteId] = useState(null);
 
+  // 🔥 FETCH TRANSACTIONS WHEN ACCOUNT CHANGES
   useEffect(() => {
     fetchTransactions();
-  }, []);
+  }, [currentAccountId]);
 
   async function fetchTransactions() {
     setLoading(true);
-    try {
-      const householdId = localStorage.getItem("householdId");
 
-      if (!householdId) {
+    try {
+      if (!currentAccountId) {
         setTransactions([]);
         return;
       }
 
       const q = query(
         collection(db, "transactions"),
-        where("householdId", "==", householdId)
+        where("accountId", "==", currentAccountId)
       );
 
       const snapshot = await getDocs(q);
-      const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+      const data = snapshot.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      }));
 
       setTransactions(data);
-    } catch {
+    } catch (err) {
+      console.error(err);
       setSnackbar({
         open: true,
         severity: "error",
@@ -76,19 +81,24 @@ export default function Transactions() {
     }
   }
 
+  // 🔍 FILTERS
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
       if (!tx.date) return false;
 
       const txDate = new Date(tx.date);
 
-      if (filters?.dateFrom && txDate < new Date(filters.dateFrom)) return false;
-      if (filters?.dateTo && txDate > new Date(filters.dateTo)) return false;
+      if (filters?.dateFrom && txDate < new Date(filters.dateFrom))
+        return false;
+
+      if (filters?.dateTo && txDate > new Date(filters.dateTo))
+        return false;
 
       return true;
     });
   }, [transactions, filters]);
 
+  // 🗑 DELETE
   const confirmDelete = async () => {
     try {
       await deleteDoc(doc(db, "transactions", deleteId));
@@ -111,18 +121,29 @@ export default function Transactions() {
     }
   };
 
-  const getColor = (cls) => {
-    return cls === "revenue"
+  const getColor = (cls) =>
+    cls === "revenue"
       ? "success.main"
       : cls === "expense"
       ? "error.main"
       : "warning.main";
-  };
 
+  // ⏳ LOADING
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" mt={6}>
         <CircularProgress />
+      </Box>
+    );
+  }
+
+  // 📭 EMPTY
+  if (!currentAccountId) {
+    return (
+      <Box textAlign="center" mt={8}>
+        <Typography color="text.secondary">
+          Select or create an account to see transactions
+        </Typography>
       </Box>
     );
   }
@@ -137,6 +158,7 @@ export default function Transactions() {
     );
   }
 
+  // ✅ UI
   return (
     <Box>
       <Stack spacing={2}>
@@ -146,13 +168,8 @@ export default function Transactions() {
           return (
             <Paper
               key={tx.id}
-              sx={{
-                p: 2,
-                borderRadius: 3,
-                position: "relative",
-              }}
+              sx={{ p: 2, borderRadius: 3, position: "relative" }}
             >
-              {/* Pocket tab */}
               <Box
                 sx={{
                   position: "absolute",
@@ -165,7 +182,6 @@ export default function Transactions() {
                 }}
               />
 
-              {/* Top */}
               <Box display="flex" justifyContent="space-between">
                 <Typography fontWeight={600}>
                   {tx.description || "No description"}
@@ -179,14 +195,12 @@ export default function Transactions() {
                 </Typography>
               </Box>
 
-              {/* Middle (cleaner than chips) */}
               <Box mt={1}>
                 <Typography variant="body2" color="text.secondary">
                   {tx.category || "Other"} • {tx.method || "—"}
                 </Typography>
               </Box>
 
-              {/* Bottom */}
               <Box
                 mt={1.5}
                 display="flex"
@@ -224,9 +238,13 @@ export default function Transactions() {
       <Snackbar
         open={snackbar.open}
         autoHideDuration={3000}
-        onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+        onClose={() =>
+          setSnackbar((s) => ({ ...s, open: false }))
+        }
       >
-        <Alert severity={snackbar.severity}>{snackbar.message}</Alert>
+        <Alert severity={snackbar.severity}>
+          {snackbar.message}
+        </Alert>
       </Snackbar>
     </Box>
   );

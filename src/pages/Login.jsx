@@ -33,8 +33,16 @@ export default function Login() {
       if (userDocSnap.exists()) {
         const userData = userDocSnap.data();
 
+        // ⚡ Legacy householdId (keep temporarily)
         if (userData.householdId) {
           localStorage.setItem("householdId", userData.householdId);
+        }
+
+        // 🆕 Set currentAccountId (first account by default)
+        if (userData.accounts && userData.accounts.length > 0) {
+          localStorage.setItem("currentAccountId", userData.accounts[0]);
+        } else {
+          console.warn("User has no accounts yet");
         }
 
         navigate("/home");
@@ -87,7 +95,7 @@ export default function Login() {
         </Stack>
       </form>
 
-      <Stack spacing={1}>
+      <Stack spacing={1} mt={2}>
         <Stack alignItems="flex-end">
           <Link component={RouterLink} to="/forgot-password" underline="hover">
             Forgot password?

@@ -3,7 +3,6 @@ import {
   Box,
   Button,
   Typography,
-  Paper,
   CircularProgress,
   Dialog,
   DialogTitle,
@@ -16,274 +15,233 @@ import {
   ListItemText,
   Divider,
 } from "@mui/material";
-import { auth, db } from "../firebaseConfig";
+
+import { db } from "../firebaseConfig";
 import {
   doc,
   getDoc,
-  setDoc,
   updateDoc,
   collection,
-  serverTimestamp,
   arrayUnion,
   query,
   where,
   getDocs,
 } from "firebase/firestore";
 
+import { useOutletContext } from "react-router-dom"; // ✅ NEW
+
 export default function Settings() {
-  const [user, setUser] = useState(null);
-  const [household, setHousehold] = useState(null);
+  const { currentAccountId } = useOutletContext(); // ✅ GLOBAL ACCOUNT
+
+  const [account, setAccount] = useState(null);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
+
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
-  // Fetch user and household on load
+  // 🔥 FETCH ACCOUNT + MEMBERS
   useEffect(() => {
-    const fetchUser = async () => {
-      const currentUser = auth.currentUser;
-      if (!currentUser) return;
+    const fetchAccountAndMembers = async () => {
+      if (!currentAccountId) {
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
 
       try {
-        const userRef = doc(db, "users", currentUser.uid);
-        const userSnap = await getDoc(userRef);
+        // 1. Get account doc
+        const accountRef = doc(db, "accounts", currentAccountId);
+        const accountSnap = await getDoc(accountRef);
 
-        if (userSnap.exists()) {
-          const userData = userSnap.data();
-          setUser({ id: currentUser.uid, ...userData });
-
-          if (userData.householdId) {
-            const householdRef = doc(db, "households", userData.householdId);
-            const householdSnap = await getDoc(householdRef);
-            if (householdSnap.exists()) {
-              const householdData = { id: householdSnap.id, ...householdSnap.data() };
-              setHousehold(householdData);
-              await fetchMembers(householdData.members);
-            }
-          }
+        if (!accountSnap.exists()) {
+          setLoading(false);
+          return;
         }
+
+        const accountData = {
+          id: currentAccountId,
+          ...accountSnap.data(),
+        };
+
+        setAccount(accountData);
+
+        // 2. Get members
+        if (!accountData.members?.length) {
+          setMembers([]);
+          setLoading(false);
+          return;
+        }
+
+        const usersRef = collection(db, "users");
+
+        const q = query(
+          usersRef,
+          where("__name__", "in", accountData.members.slice(0, 10)) // Firestore limit
+        );
+
+        const snapshot = await getDocs(q);
+
+        const fetchedMembers = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+
+        setMembers(fetchedMembers);
       } catch (err) {
-        console.error("Error fetching user/household:", err);
-        setErrorMessage("Failed to load settings.");
+        console.error("Error fetching members:", err);
+        setErrorMessage("Failed to fetch members.");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchUser();
-  }, []);
+    fetchAccountAndMembers();
+  }, [currentAccountId]);
 
-  // Fetch members info (name + email)
-  const fetchMembers = async (memberIds) => {
-    if (!memberIds?.length) return setMembers([]);
-    const usersRef = collection(db, "users");
-
-    // Firestore "in" query limit is 10
-    const q = query(usersRef, where("__name__", "in", memberIds.slice(0, 10)));
-    const querySnapshot = await getDocs(q);
-
-    const fetchedMembers = querySnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
-    setMembers(fetchedMembers);
-  };
-
-  const handleCreateHousehold = async () => {
-    if (!user) return;
-
-    const householdName = `${user.name}'s Household`;
-
-    try {
-      const newHouseholdRef = doc(collection(db, "households"));
-      await setDoc(newHouseholdRef, {
-        name: householdName,
-        members: [user.id],
-        createdAt: serverTimestamp(),
-      });
-
-      await updateDoc(doc(db, "users", user.id), {
-        householdId: newHouseholdRef.id,
-      });
-
-      setHousehold({
-        id: newHouseholdRef.id,
-        name: householdName,
-        members: [user.id],
-      });
-      setMembers([{ id: user.id, name: user.name, email: user.email }]);
-      setSuccessMessage("✅ Household created!");
-      setTimeout(() => setSuccessMessage(""), 5000);
-    } catch (err) {
-      console.error(err);
-      setErrorMessage("❌ Failed to create household.");
-      setTimeout(() => setErrorMessage(""), 5000);
-    }
-  };
-
+  // ➕ ADD MEMBER
   const handleAddMember = async () => {
+    if (!account) return;
+
     setSuccessMessage("");
     setErrorMessage("");
 
     try {
       const usersRef = collection(db, "users");
-      const q = query(usersRef, where("email", "==", inviteEmail.trim()));
-      const querySnapshot = await getDocs(q);
 
-      if (querySnapshot.empty) {
+      const q = query(
+        usersRef,
+        where("email", "==", inviteEmail.trim())
+      );
+
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
         setErrorMessage("No user found with this email.");
-        setTimeout(() => setErrorMessage(""), 5000);
         return;
       }
 
-      const invitedUserDoc = querySnapshot.docs[0];
+      const invitedUserDoc = snapshot.docs[0];
       const invitedUserId = invitedUserDoc.id;
 
-      // Update household
-      const householdRef = doc(db, "households", household.id);
-      await updateDoc(householdRef, {
+      // 1. Add to account
+      const accountRef = doc(db, "accounts", account.id);
+
+      await updateDoc(accountRef, {
         members: arrayUnion(invitedUserId),
       });
 
-      // Update invited user
+      // 2. Add account to user
       await updateDoc(doc(db, "users", invitedUserId), {
-        householdId: household.id,
+        accounts: arrayUnion(account.id),
       });
 
       setSuccessMessage("✅ User successfully added!");
       setInviteEmail("");
 
-      // Refresh members
-      const updatedSnap = await getDoc(householdRef);
-      const updatedHousehold = { id: household.id, ...updatedSnap.data() };
-      setHousehold(updatedHousehold);
-      await fetchMembers(updatedHousehold.members);
+      // 🔄 Refresh members (simple way: refetch)
+      const updatedSnap = await getDoc(accountRef);
+      const updatedAccount = {
+        id: account.id,
+        ...updatedSnap.data(),
+      };
 
-      setTimeout(() => setSuccessMessage(""), 5000);
-    } catch (error) {
-      console.error(error);
-      setErrorMessage("❌ Error adding member. Please try again.");
-      setTimeout(() => setErrorMessage(""), 5000);
+      setAccount(updatedAccount);
+
+      // trigger refetch logic
+      const usersQuery = query(
+        collection(db, "users"),
+        where("__name__", "in", updatedAccount.members.slice(0, 10))
+      );
+
+      const usersSnap = await getDocs(usersQuery);
+
+      setMembers(
+        usersSnap.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }))
+      );
+    } catch (err) {
+      console.error(err);
+      setErrorMessage("❌ Error adding member.");
     }
   };
 
-  const handleGenerateInviteLink = async () => {
-    if (!household) return;
-
-    const inviteLink = `${window.location.origin}/invite?householdId=${household.id}`;
-
-    try {
-      await navigator.clipboard.writeText(inviteLink);
-      setSuccessMessage("✅ Invite link copied to clipboard!");
-    } catch {
-      setErrorMessage("🔗 Invite link: " + inviteLink);
-    } finally {
-      setTimeout(() => {
-        setSuccessMessage("");
-        setErrorMessage("");
-      }, 5000);
-    }
-  };
-
-  // ---------- LOADING ----------
-  if (loading)
+  // ⏳ LOADING
+  if (loading) {
     return (
-      <Box
-        display="flex"
-        flexDirection="column"
-        justifyContent="center"
-        alignItems="center"
-        height="60vh"
-      >
+      <Box display="flex" justifyContent="center" alignItems="center" height="60vh">
         <CircularProgress />
-        <Typography mt={2}>Loading settings...</Typography>
+        <Typography ml={2}>Loading members...</Typography>
       </Box>
     );
+  }
 
+  // 🚫 NO ACCOUNT SELECTED
+  if (!currentAccountId) {
+    return (
+      <Box textAlign="center" mt={8}>
+        <Typography color="text.secondary">
+          Select an account to manage members
+        </Typography>
+      </Box>
+    );
+  }
+
+  // ✅ UI
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        Settings
+      <Typography variant="h5" gutterBottom>
+        Account Members
       </Typography>
 
-      {!household ? (
-        <Paper sx={{ p: 3, mb: 3 }}>
-          <Typography variant="body1" mb={2}>
-            You don’t have a household yet.
-          </Typography>
-          <Button variant="contained" onClick={handleCreateHousehold}>
-            Create Household
-          </Button>
-          {successMessage && (
-            <Alert severity="success" sx={{ mt: 2 }}>
-              {successMessage}
-            </Alert>
-          )}
-          {errorMessage && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {errorMessage}
-            </Alert>
-          )}
-        </Paper>
+      {!members.length ? (
+        <Typography>No members yet.</Typography>
       ) : (
-        <Paper sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6">{household.name}</Typography>
-          <Typography variant="body2" mb={2}>
-            Household ID: <strong>{household.id}</strong>
-          </Typography>
-
-          <Box sx={{ display: "flex", gap: 2, mb: 3 }}>
-            <Button variant="outlined" onClick={() => setAddMemberOpen(true)}>
-              Add Members
-            </Button>
-            <Button variant="outlined" onClick={handleGenerateInviteLink}>
-              Invite via Email
-            </Button>
-          </Box>
-
-          <Typography variant="subtitle1" gutterBottom>
-            Members:
-          </Typography>
-          {members.length > 0 ? (
-            <List dense>
-              {members.map((m, i) => (
-                <Box key={m.id}>
-                  <ListItem>
-                    <ListItemText
-                      primary={m.name || "Unnamed User"}
-                      secondary={m.email || m.id}
-                    />
-                  </ListItem>
-                  {i < members.length - 1 && <Divider />}
-                </Box>
-              ))}
-            </List>
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              No members yet.
-            </Typography>
-          )}
-
-          {successMessage && (
-            <Alert severity="success" sx={{ mt: 2 }}>
-              {successMessage}
-            </Alert>
-          )}
-          {errorMessage && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {errorMessage}
-            </Alert>
-          )}
-        </Paper>
+        <List dense>
+          {members.map((m, i) => (
+            <Box key={m.id}>
+              <ListItem>
+                <ListItemText
+                  primary={m.name || "Unnamed User"}
+                  secondary={m.email || m.id}
+                />
+              </ListItem>
+              {i < members.length - 1 && <Divider />}
+            </Box>
+          ))}
+        </List>
       )}
 
-      {/* Add Member Dialog */}
+      <Button
+        variant="contained"
+        sx={{ mt: 2 }}
+        onClick={() => setAddMemberOpen(true)}
+      >
+        Add Member
+      </Button>
+
+      {successMessage && (
+        <Alert severity="success" sx={{ mt: 2 }}>
+          {successMessage}
+        </Alert>
+      )}
+
+      {errorMessage && (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {errorMessage}
+        </Alert>
+      )}
+
+      {/* Dialog */}
       <Dialog open={addMemberOpen} onClose={() => setAddMemberOpen(false)}>
         <DialogTitle>Add Member</DialogTitle>
+
         <DialogContent>
           <TextField
             fullWidth
@@ -292,19 +250,15 @@ export default function Settings() {
             onChange={(e) => setInviteEmail(e.target.value)}
             margin="normal"
           />
-          {successMessage && (
-            <Alert severity="success" sx={{ mt: 2 }}>
-              {successMessage}
-            </Alert>
-          )}
-          {errorMessage && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {errorMessage}
-            </Alert>
-          )}
+
+          {successMessage && <Alert severity="success">{successMessage}</Alert>}
+          {errorMessage && <Alert severity="error">{errorMessage}</Alert>}
         </DialogContent>
+
         <DialogActions>
-          <Button onClick={() => setAddMemberOpen(false)}>Cancel</Button>
+          <Button onClick={() => setAddMemberOpen(false)}>
+            Cancel
+          </Button>
           <Button variant="contained" onClick={handleAddMember}>
             Add
           </Button>
