@@ -58,7 +58,7 @@ export default function Signup() {
         accounts: [accountRef.id], // ✅ NEW SYSTEM
       });
 
-      navigate("/home");
+      navigate("/dashboard");
     } catch (err) {
       console.error("Signup error:", err);
       setError(err.message || "Failed to create account.");

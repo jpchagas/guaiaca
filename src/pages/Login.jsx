@@ -45,7 +45,7 @@ export default function Login() {
           console.warn("User has no accounts yet");
         }
 
-        navigate("/home");
+        navigate("/dashboard");
       } else {
         setError("User data not found.");
       }

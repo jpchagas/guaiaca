@@ -64,7 +64,7 @@ export default function JoinAccount() {
       setMessage("✅ You’ve successfully joined this account!");
       localStorage.setItem("currentAccountId", accountId);
 
-      setTimeout(() => navigate("/home"), 1500);
+      setTimeout(() => navigate("/dashboard"), 1500);
     } catch (err) {
       console.error("Error joining account:", err);
       setMessage("❌ Failed to join account. Please try again.");

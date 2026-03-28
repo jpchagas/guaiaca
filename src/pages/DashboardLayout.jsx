@@ -247,9 +247,9 @@ export default function DashboardLayout() {
         <BottomNavigation
           value={getNavIndex()}
           onChange={(e, newValue) => {
-            if (newValue === 0) navigate("/home");
-            if (newValue === 1) navigate("/home/transactions");
-            if (newValue === 2) navigate("/home/settings");
+            if (newValue === 0) navigate("/dashboard");
+            if (newValue === 1) navigate("/dashboard/transactions");
+            if (newValue === 2) navigate("/dashboard/settings");
           }}
         >
           <BottomNavigationAction label="Overview" icon={<Home />} />

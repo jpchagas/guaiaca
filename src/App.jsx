@@ -2,7 +2,13 @@ import React, { useEffect, useState, lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "./firebaseConfig";
-import { doc, getDoc, setDoc, serverTimestamp, collection } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  serverTimestamp,
+  collection,
+} from "firebase/firestore";
 
 import ForgotPassword from "./pages/ForgotPassword";
 import Invite from "./pages/Invite";
@@ -79,7 +85,10 @@ function App() {
               const userData = userDoc.data();
 
               // 🔹 Legacy householdId migration
-              if ((!userData.accounts || userData.accounts.length === 0) && userData.householdId) {
+              if (
+                (!userData.accounts || userData.accounts.length === 0) &&
+                userData.householdId
+              ) {
                 const accountRef = doc(collection(db, "accounts"));
                 await setDoc(accountRef, {
                   name: "Family Account",
@@ -88,15 +97,22 @@ function App() {
                   createdAt: serverTimestamp(),
                 });
 
-                await setDoc(doc(db, "users", u.uid), {
-                  ...userData,
-                  accounts: [accountRef.id],
-                }, { merge: true });
+                await setDoc(
+                  doc(db, "users", u.uid),
+                  {
+                    ...userData,
+                    accounts: [accountRef.id],
+                  },
+                  { merge: true }
+                );
 
                 localStorage.setItem("currentAccountId", accountRef.id);
                 localStorage.setItem("householdId", userData.householdId);
               } else if (userData.accounts && userData.accounts.length > 0) {
-                localStorage.setItem("currentAccountId", userData.accounts[0]);
+                localStorage.setItem(
+                  "currentAccountId",
+                  userData.accounts[0]
+                );
               }
 
               setUser(u);
@@ -136,13 +152,22 @@ function App() {
         <Suspense fallback={<PageLoader />}>
           <Routes>
             {/* Public */}
-            <Route path="/" element={!user ? <Login /> : <Navigate to="/home" />} />
-            <Route path="/signup" element={!user ? <Signup /> : <Navigate to="/home" />} />
+            <Route
+              path="/"
+              element={!user ? <Login /> : <Navigate to="/dashboard" />}
+            />
+            <Route
+              path="/signup"
+              element={!user ? <Signup /> : <Navigate to="/dashboard" />}
+            />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/invite" element={<Invite />} />
 
             {/* Private */}
-            <Route path="/home" element={user ? <DashboardLayout /> : <Navigate to="/" />}>
+            <Route
+              path="/dashboard"
+              element={user ? <DashboardLayout /> : <Navigate to="/" />}
+            >
               <Route index element={<Overview />} />
               <Route path="transactions" element={<Transactions />} />
               <Route path="settings" element={<Settings />} />

@@ -64,7 +64,7 @@ export default function Invite() {
       localStorage.setItem("currentAccountId", accountId);
 
       // Redirect after short delay
-      setTimeout(() => navigate("/home"), 2000);
+      setTimeout(() => navigate("/dashboard"), 2000);
     } catch (err) {
       console.error("Failed to join account:", err);
       alert("❌ Failed to join account. Please try again.");
