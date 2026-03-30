@@ -24,15 +24,16 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import { db } from "../firebaseConfig";
+
 import { useFilters } from "../context/FilterContext";
-import { useOutletContext } from "react-router-dom"; // ✅ NEW
+import { useAccount } from "../context/AccountContext";
 
 export default function Transactions() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const { filters } = useFilters();
-  const { currentAccountId } = useOutletContext(); // ✅ GLOBAL ACCOUNT
+  const { currentAccount } = useAccount();
 
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -42,23 +43,24 @@ export default function Transactions() {
 
   const [deleteId, setDeleteId] = useState(null);
 
-  // 🔥 FETCH TRANSACTIONS WHEN ACCOUNT CHANGES
+  // 🔥 FETCH TRANSACTIONS
   useEffect(() => {
     fetchTransactions();
-  }, [currentAccountId]);
+  }, [currentAccount]);
 
   async function fetchTransactions() {
     setLoading(true);
 
     try {
-      if (!currentAccountId) {
+      if (!currentAccount) {
         setTransactions([]);
+        setLoading(false);
         return;
       }
 
       const q = query(
         collection(db, "transactions"),
-        where("accountId", "==", currentAccountId)
+        where("accountId", "==", currentAccount)
       );
 
       const snapshot = await getDocs(q);
@@ -137,8 +139,8 @@ export default function Transactions() {
     );
   }
 
-  // 📭 EMPTY
-  if (!currentAccountId) {
+  // 🚫 NO ACCOUNT
+  if (!currentAccount) {
     return (
       <Box textAlign="center" mt={8}>
         <Typography color="text.secondary">
@@ -148,6 +150,7 @@ export default function Transactions() {
     );
   }
 
+  // 📭 EMPTY
   if (filteredTransactions.length === 0) {
     return (
       <Box textAlign="center" mt={8}>

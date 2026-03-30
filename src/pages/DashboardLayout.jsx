@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState } from "react";
 import {
   AppBar,
   Toolbar,
@@ -35,20 +35,29 @@ import {
   collection,
   addDoc,
   doc,
-  getDoc,
   serverTimestamp,
+  setDoc,
+  arrayUnion,
+  updateDoc,
 } from "firebase/firestore";
 
 import { parseFile } from "../services/parsers/parseFile";
 import { ingestTransactionsList } from "../services/ingestion/ingestTransactionsList";
 
+import AccountSwitcher from "../components/AccountSwitcher";
+import { useAccount } from "../context/AccountContext";
+
 export default function DashboardLayout() {
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
   const [error, setError] = useState(null);
 
-  const [currentAccountId, setCurrentAccountId] = useState(null);
-  const [accounts, setAccounts] = useState([]);
-  const [loadingAccount, setLoadingAccount] = useState(true);
+  const {
+    accounts,
+    currentAccount,
+    switchAccount,
+    setAccounts,
+    loading,
+  } = useAccount();
 
   const [formData, setFormData] = useState({
     description: "",
@@ -61,64 +70,13 @@ export default function DashboardLayout() {
   const location = useLocation();
   const fileInputRef = useRef(null);
 
-  // ✅ GLOBAL USER + ACCOUNT LOAD
-  useEffect(() => {
-    const fetchUser = async () => {
-      const currentUser = auth.currentUser;
-      if (!currentUser) return;
-
-      try {
-        const userRef = doc(db, "users", currentUser.uid);
-        const userSnap = await getDoc(userRef);
-
-        if (!userSnap.exists()) {
-          setLoadingAccount(false);
-          return;
-        }
-
-        const userData = userSnap.data();
-        const userAccounts = userData.accounts || [];
-
-        setAccounts(userAccounts);
-
-        const stored = localStorage.getItem("currentAccountId");
-
-        const validAccount =
-          stored && userAccounts.includes(stored)
-            ? stored
-            : userAccounts[0] || null;
-
-        if (validAccount) {
-          setCurrentAccountId(validAccount);
-          localStorage.setItem("currentAccountId", validAccount);
-        }
-      } catch (err) {
-        console.error("Error fetching user data:", err);
-      } finally {
-        setLoadingAccount(false);
-      }
-    };
-
-    fetchUser();
-  }, []);
-
-  // 🔄 Sync if changed somewhere else (Overview)
-  useEffect(() => {
-    const handleStorageChange = () => {
-      const accountId = localStorage.getItem("currentAccountId");
-      setCurrentAccountId(accountId);
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-
-    return () => window.removeEventListener("storage", handleStorageChange);
-  }, []);
-
+  // ---------------- LOGOUT ----------------
   const handleLogout = async () => {
     await signOut(auth);
     navigate("/");
   };
 
+  // ---------------- NAV ----------------
   const getPageTitle = () => {
     if (location.pathname.includes("transactions")) return "Transactions";
     if (location.pathname.includes("settings")) return "Settings";
@@ -131,12 +89,45 @@ export default function DashboardLayout() {
     return 0;
   };
 
+  // ---------------- CREATE ACCOUNT ----------------
+  const handleCreateAccount = async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    try {
+      const newAccountRef = doc(collection(db, "accounts"));
+
+      await setDoc(newAccountRef, {
+        name: "New Account",
+        members: [currentUser.uid],
+        createdAt: serverTimestamp(),
+      });
+
+      await updateDoc(doc(db, "users", currentUser.uid), {
+        accounts: arrayUnion(newAccountRef.id),
+      });
+
+      // 🔥 Update context state
+      setAccounts((prev) => [
+        ...prev,
+        {
+          id: newAccountRef.id,
+          name: "New Account",
+        },
+      ]);
+
+      switchAccount(newAccountRef.id);
+    } catch (err) {
+      console.error("Error creating account:", err);
+    }
+  };
+
   // ---------------- FILE UPLOAD ----------------
   const handleFileChange = async (e) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
-    if (!currentAccountId) {
+    if (!currentAccount) {
       setError("No account selected");
       return;
     }
@@ -149,7 +140,7 @@ export default function DashboardLayout() {
       if (parsedTransactions?.length) {
         const enriched = parsedTransactions.map((tx) => ({
           ...tx,
-          accountId: currentAccountId,
+          accountId: currentAccount,
           createdAt: serverTimestamp(),
         }));
 
@@ -170,7 +161,7 @@ export default function DashboardLayout() {
 
   const handleManualSubmit = async () => {
     try {
-      if (!currentAccountId) {
+      if (!currentAccount) {
         setError("No account selected");
         return;
       }
@@ -178,11 +169,12 @@ export default function DashboardLayout() {
       await addDoc(collection(db, "transactions"), {
         ...formData,
         amount: parseFloat(formData.amount),
-        accountId: currentAccountId,
+        accountId: currentAccount,
         createdAt: serverTimestamp(),
       });
 
       setManualDialogOpen(false);
+
       setFormData({
         description: "",
         amount: "",
@@ -195,7 +187,7 @@ export default function DashboardLayout() {
   };
 
   // ---------------- LOADING ----------------
-  if (loadingAccount) {
+  if (loading) {
     return (
       <Box display="flex" justifyContent="center" mt={10}>
         <Typography>Loading account...</Typography>
@@ -208,9 +200,18 @@ export default function DashboardLayout() {
       {/* TOP BAR */}
       <AppBar position="fixed">
         <Toolbar sx={{ justifyContent: "space-between" }}>
-          <Typography variant="h6" fontWeight={600}>
-            {getPageTitle()}
-          </Typography>
+          <Box>
+            <Typography variant="h6" fontWeight={600}>
+              {getPageTitle()}
+            </Typography>
+
+            <AccountSwitcher
+              accounts={accounts}
+              currentAccountId={currentAccount}
+              onChange={switchAccount}
+              onCreateAccount={handleCreateAccount}
+            />
+          </Box>
 
           <IconButton onClick={handleLogout}>
             <Logout />
@@ -222,13 +223,7 @@ export default function DashboardLayout() {
       <Box sx={{ flex: 1, mt: 8, mb: 12 }}>
         <Container maxWidth="sm" sx={{ px: 2 }}>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <Outlet
-              context={{
-                currentAccountId,
-                setCurrentAccountId, // 🔥 allow children to update globally
-                accounts,
-              }}
-            />
+            <Outlet />
           </Box>
         </Container>
       </Box>

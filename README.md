@@ -123,281 +123,231 @@ Household roles
 Charts improvements (trends over time)
 Dark mode 🌙
 
+
+Turn “Create Account” into a proper modal flow
+Or upgrade AccountContext to real-time (onSnapshot)
+
+Create Account Modal (with name input + validation)
+
 switch to onSnapshot, your app becomes real-time shared finance (huge UX win).
+
 on account selection show name not id
-move account selection to top bar
+
 create an month filter on top too
+
 the share account should be something like xepa app
+
 instead settings should be budget
 
 ## Current Context
 
 🧾 Guaiaca Project — Progress Summary (Updated)
 
-Date: 2026-03-27
-Phase: Multi-account architecture + mobile-first refinement
+Date: 2026-03-29
+Phase: Multi-account architecture + global state (Context) + layout consolidation
 
 1. 🔐 Authentication & User Management
-
 ✅ Implemented
-
 Firebase Auth: Signup / Login / Password Reset
 onAuthStateChanged global listener
 Route protection via React Router
-
 🆕 Improvements
-
-Cleaned auth UX (errors, messaging, no flicker)
+Clean auth UX (errors, messaging, no flicker)
 Stable session persistence
 User document (users/{userId}) now includes:
 name
 email
-accounts: [] ✅ NEW (replaces householdId)
-
+accounts: [] ✅
 ⚠️ Notes
-
 ❌ Household model removed
 ✅ Fully migrated to multi-account system
-2. 🏦 Account System (NEW CORE ARCHITECTURE)
-
+2. 🏦 Account System (CORE ARCHITECTURE)
 ✅ Implemented
-
 Firestore structure:
 users → accounts: [accountId]
 accounts → members: [userId]
-Create account (Overview)
+Create account (now global via layout)
 Switch accounts (global)
 Persist selected account via localStorage
 Multi-account support (personal, family, etc.)
-
-🆕 Improvements
-
-🔥 Global account state now managed via DashboardLayout
-All pages consume account via useOutletContext()
-Real-time UI sync when switching accounts
-Account automatically restored on app load
-
+🆕 Major Upgrade
+🔥 AccountContext introduced (NEW SINGLE SOURCE OF TRUTH)
+Global state no longer tied to layout or pages
+Account switching now available anywhere in app
+Automatic account restore on app load
+🆕 UI Improvements
+🔥 Account switcher moved to AppBar (global)
+No more page-level account UI
+Cleaner, app-wide behavior
 ⚠️ Known Constraints
-
-Account names not yet displayed (IDs only)
-No roles (owner/admin/member)
-No account deletion / editing yet
-3. 👨‍👩‍👧‍👦 Members Management (Refactored)
-
+⚠️ Account names partially implemented (needs full fetch layer)
+❌ No roles (owner/admin/member)
+❌ No account deletion/edit yet
+3. 👨‍👩‍👧‍👦 Members Management
 ✅ Implemented
-
 Add members via email (Settings)
 Members stored in accounts.members
 User document updated with account reference
 Members list fetched via Firestore query
-
 🆕 Improvements
-
-Settings now fetches account dynamically from accountId
-Fully reactive to account switching
-
+Fully reactive to AccountContext switching
+Clean separation of account vs UI logic
 ⚠️ Known Constraints
-
-Firestore query limit (10 users)
+Firestore in query limit (10 users)
 No remove member flow
 No role system
-Invite link-based flow replaced with account join via Invite page
 4. 📱 Mobile-First Dashboard & Navigation
-
 ✅ Implemented
-
 Fully mobile-first layout
 Bottom Navigation (primary navigation)
 Minimal AppBar
 FAB for transaction creation
-
-🆕 Improvements
-
-🔥 Account switcher moved to global (DashboardLayout)
-Cleaner architecture (no page-level account logic)
-Native app feel achieved
+🆕 Major Improvements
+🔥 Account switcher in global AppBar
+🔥 Layout simplified (no business logic)
+🔥 Native app feel significantly improved
 5. 💰 Transactions & Overview
-
 📊 Overview Page
 ✅ Implemented
-
-Account creation
-Account switching (UI always visible)
 Balance, income, expenses, investments
 Pie chart (Recharts)
-
+Fully reactive to account + filters
 🆕 Improvements
-
-Always-visible account selector
-Create account button
-Fully synced with global account state
-
+❌ Removed account logic (now global)
+Cleaner, pure presentation component
 📋 Transactions Page
 ✅ Implemented
-
 Fetch transactions by accountId
 Delete transactions
 Filter by date
-
 🆕 Improvements
-
-🔥 Uses global account (useOutletContext)
+🔥 Now uses AccountContext (no OutletContext)
 Instant refresh when switching accounts
 Improved empty states
-
 ⚠️ Pending
-
 Edit transaction
-Card-based UI improvements
 Pagination / infinite scroll
+UI polish (cards, grouping)
 6. 🧠 State Management & Architecture
-
-🔥 Major Upgrade
+🔥 MAJOR BREAKTHROUGH
 ✅ Implemented
-
-Single source of truth for account → DashboardLayout
+🔥 AccountContext (global state layer)
+Removed useOutletContext completely
 Removed duplicated state across pages
-Removed localStorage dependency inside pages
-
+Pages are now pure consumers
+🆕 Architecture
+Context = global state
+Layout = UI shell
+Pages = feature modules
 🆕 Improvements
-
-Clean separation:
-Layout = state owner
-Pages = consumers
-Scalable architecture for multi-account
-
-⚠️ Pending (Critical Next Step)
-
-Replace useOutletContext with:
-👉 React Context (AccountContext)
-Unify filters into global system
+True separation of concerns
+Scalable architecture for multi-account system
+Easier future features (roles, permissions, sharing)
+⚠️ Pending
+Global Filters system refinement
+Potential normalization of account data (id + name map)
 7. 🚀 Splash Screen & App Load
-
 ✅ Implemented
-
 Animated splash screen
 Silent auth check
 Smooth transitions
-
 🆕 UX Improvements
-
 No flicker
+Account restored seamlessly via Context
 Native app feel maintained
 8. 🔥 Firebase Integration
-
 ✅ Stable
-
 Auth
 Firestore reads/writes
 Transactions linked to accountId
 Members linked to accounts
-
 🆕 Improvements
-
 Cleaner data model:
 ❌ households → ✅ accounts
-Consistent data relationships
-
+Consistent relationships across collections
 ⚠️ Needs Work
-
-Firestore validation rules
-Better error handling
+Firestore validation rules (critical)
 Query limits handling
-Batch operations for scaling
+Batch operations for scale
+Error standardization
 9. 🎨 UI & Styling
-
 🆕 Improvements
-
 Consistent mobile-first layout
 Clean Material UI usage
 Better spacing and hierarchy
-
+Global account UX (huge improvement)
 ⚠️ Pending
-
-Show account names instead of IDs
+Account names fully surfaced everywhere
 Design system consistency
 Dark mode polish
 10. ⚠️ Stability & Error Handling
-
 🆕 Improvements
-
 Major architectural bugs eliminated
-State inconsistencies fixed (huge win)
-
+Removed context mismatch issues (big win)
+Stable global state
 🚨 Pending
-
 Global Error Boundary
 Centralized error handling
 Better user-facing error messages
 11. ⚙️ Routing & Performance
-
 🆕 Improvements
-
-React Router optimized
-Layout-based architecture
+React Router simplified
+Layout now purely structural
 No redundant fetches
-
+Context-driven rendering
 🧠 Final Assessment
-✅ Strong Areas:
-
-🔥 Multi-account architecture (major upgrade)
-Mobile-first UX (clean and consistent)
-Clear separation of concerns (layout vs pages)
-Firebase data model now scalable
-
-⚠️ Needs Improvement:
+✅ Strong Areas
+🔥 AccountContext (production-grade architecture)
+🔥 Multi-account system (clean + scalable)
+🔥 Mobile-first UX (native feel)
+🔥 Clean separation: Context / Layout / Pages
+🔥 Firebase model aligned with scaling
+⚠️ Needs Improvement
 🔴 High Priority
-
-Global state (AccountContext + Filters)
-Firestore validation & security rules
+Firestore security rules
 Error handling system
-
+Account data enrichment (names, metadata)
 🟡 Medium Priority
-
-Account UX (names, roles)
+Account UX (rename, roles)
 Transactions UX (edit, pagination)
 Member management (remove, roles)
 🔥 Big Upgrade From Previous Version
 ❌ Removed household complexity
-✅ Introduced scalable account system
-🔥 Centralized state in layout
-🔥 Eliminated duplicated logic across pages
-✅ Cleaner, production-ready architecture direction
-🔥 Next Steps / Roadmap
-
-Priority 1 — Architecture (CRITICAL)
-
-Create AccountContext (replace Outlet context)
-Unify filters (global system)
-Add Firestore validation rules
-
+❌ Removed useOutletContext
+✅ Introduced AccountContext (global state)
+✅ Centralized account logic properly
+✅ Eliminated duplicated logic across pages
+✅ Layout simplified into pure UI shell
+🔥 Architecture now production-ready
+🚀 Next Steps / Roadmap
+Priority 1 — Data & Security (CRITICAL)
+Firestore validation rules
+Secure multi-account access
+Error handling system
 Priority 2 — Core UX
-
-Account names (instead of IDs)
-Edit/delete transactions
-Member removal + roles
-
-Priority 3 — Data & Performance
-
+Account names (full implementation)
+Create Account modal (name input)
+Edit transactions
+Member roles + removal
+Priority 3 — Performance & Scale
 Pagination / infinite scroll
-Optimize Firestore queries
-Batch writes for ingestion
-
+Query optimization
+Batch writes
 Priority 4 — UI Polish
-
 Design system consistency
 Dark mode refinement
 Micro-interactions
-
 ✅ Final Summary
+
 Guaiaca is now:
 
 ✅ Multi-account ready
-✅ Mobile-first and stable
-✅ Architecturally clean and scalable
+✅ Mobile-first and smooth
+✅ Context-driven (modern React architecture)
+✅ Clean, scalable, and production-aligned
 
-⚠️ Next focus:
-
-State architecture (Context)
-Firestore robustness
-UX polish
+⚠️ Next Focus
+Firestore robustness (rules + validation)
+Account UX (names, roles)
+Transactions UX
+Error handling system

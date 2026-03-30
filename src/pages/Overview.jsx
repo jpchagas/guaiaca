@@ -4,15 +4,7 @@ import {
   Typography,
   Paper,
   CircularProgress,
-  Button,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Stack,
 } from "@mui/material";
-
-import { useOutletContext } from "react-router-dom";
 
 import { db, auth } from "../firebaseConfig";
 import {
@@ -21,10 +13,6 @@ import {
   query,
   where,
   doc,
-  setDoc,
-  serverTimestamp,
-  arrayUnion,
-  updateDoc,
   getDoc,
 } from "firebase/firestore";
 
@@ -37,6 +25,7 @@ import {
 } from "recharts";
 
 import { useFilters } from "../context/FilterContext";
+import { useAccount } from "../context/AccountContext";
 
 const COLORS = ["#2E7D32", "#66BB6A", "#FFB300", "#E0E0E0"];
 
@@ -48,11 +37,7 @@ export default function Overview() {
   const { filters } = useFilters();
 
   // ✅ GLOBAL ACCOUNT CONTEXT
-  const {
-    currentAccountId,
-    setCurrentAccountId,
-    accounts,
-  } = useOutletContext();
+  const { currentAccount } = useAccount();
 
   // -------------------- FETCH USER --------------------
   useEffect(() => {
@@ -79,7 +64,7 @@ export default function Overview() {
   // -------------------- FETCH TRANSACTIONS --------------------
   useEffect(() => {
     const fetchTransactions = async () => {
-      if (!currentAccountId) {
+      if (!currentAccount) {
         setTransactions([]);
         setLoading(false);
         return;
@@ -90,7 +75,7 @@ export default function Overview() {
       try {
         const q = query(
           collection(db, "transactions"),
-          where("accountId", "==", currentAccountId)
+          where("accountId", "==", currentAccount)
         );
 
         const snapshot = await getDocs(q);
@@ -109,7 +94,7 @@ export default function Overview() {
     };
 
     fetchTransactions();
-  }, [currentAccountId]);
+  }, [currentAccount]);
 
   // -------------------- FILTERS --------------------
   const filteredTransactions = useMemo(() => {
@@ -157,38 +142,6 @@ export default function Overview() {
     }));
   }, [filteredTransactions]);
 
-  // -------------------- CREATE ACCOUNT --------------------
-  const handleCreateAccount = async () => {
-    if (!user) return;
-
-    try {
-      const newAccountRef = doc(collection(db, "accounts"));
-
-      await setDoc(newAccountRef, {
-        name: `${user.name}'s Account`,
-        members: [user.id],
-        createdAt: serverTimestamp(),
-      });
-
-      await updateDoc(doc(db, "users", user.id), {
-        accounts: arrayUnion(newAccountRef.id),
-      });
-
-      // 🔥 update global state
-      setCurrentAccountId(newAccountRef.id);
-
-      // optional: refresh page state (Dashboard will handle accounts reload on next mount)
-    } catch (err) {
-      console.error("Failed to create account:", err);
-    }
-  };
-
-  // -------------------- SWITCH ACCOUNT --------------------
-  const handleSwitchAccount = (accountId) => {
-    setCurrentAccountId(accountId);
-    localStorage.setItem("currentAccountId", accountId); // keep persistence
-  };
-
   // -------------------- LOADING --------------------
   if (loading) {
     return (
@@ -201,30 +154,8 @@ export default function Overview() {
   // -------------------- UI --------------------
   return (
     <Box>
-      {/* 🔥 ACCOUNT HEADER */}
-      <Stack direction="row" spacing={2} alignItems="center" mb={3}>
-        <FormControl sx={{ minWidth: 200 }}>
-          <InputLabel>Select Account</InputLabel>
-          <Select
-            value={currentAccountId || ""}
-            label="Select Account"
-            onChange={(e) => handleSwitchAccount(e.target.value)}
-          >
-            {accounts.map((accId) => (
-              <MenuItem key={accId} value={accId}>
-                {accId}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
-        <Button variant="contained" onClick={handleCreateAccount}>
-          New Account
-        </Button>
-      </Stack>
-
-      {/* EMPTY STATE (no account selected) */}
-      {!currentAccountId && (
+      {/* EMPTY STATE */}
+      {!currentAccount && (
         <Box textAlign="center" mt={6}>
           <Typography color="text.secondary">
             Select or create an account to get started
@@ -232,9 +163,10 @@ export default function Overview() {
         </Box>
       )}
 
-      {/* BALANCE */}
-      {currentAccountId && (
+      {/* CONTENT */}
+      {currentAccount && (
         <>
+          {/* BALANCE */}
           <Paper
             sx={{
               p: 3,

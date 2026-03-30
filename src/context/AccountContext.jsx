@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { auth, db } from "../firebaseConfig";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, collection, query, where} from "firebase/firestore";
 
 const AccountContext = createContext();
 
@@ -18,23 +18,40 @@ export function AccountProvider({ children }) {
       }
 
       try {
-        const snap = await getDoc(doc(db, "users", user.uid));
+        const userSnap = await getDoc(doc(db, "users", user.uid));
 
-        if (snap.exists()) {
-          const data = snap.data();
-          const userAccounts = data.accounts || [];
-
-          setAccounts(userAccounts);
-
-          const stored = localStorage.getItem("currentAccountId");
-
-          const active =
-            stored && userAccounts.includes(stored)
-              ? stored
-              : userAccounts[0] || null;
-
-          setCurrentAccount(active);
+        if (!userSnap.exists()) {
+          setLoading(false);
+          return;
         }
+
+        const userData = userSnap.data();
+        const accountIds = userData.accounts || [];
+
+        // 🔥 Fetch account documents
+        const accountsData = [];
+
+        for (const id of accountIds) {
+          const accSnap = await getDoc(doc(db, "accounts", id));
+
+          if (accSnap.exists()) {
+            accountsData.push({
+              id,
+              ...accSnap.data(),
+            });
+          }
+        }
+
+        setAccounts(accountsData);
+
+        const stored = localStorage.getItem("currentAccountId");
+
+        const valid =
+          stored && accountIds.includes(stored)
+            ? stored
+            : accountIds[0] || null;
+
+        setCurrentAccount(valid);
       } catch (err) {
         console.error("Error loading accounts:", err);
       } finally {

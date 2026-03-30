@@ -28,10 +28,10 @@ import {
   getDocs,
 } from "firebase/firestore";
 
-import { useOutletContext } from "react-router-dom"; // ✅ NEW
+import { useAccount } from "../context/AccountContext";
 
 export default function Settings() {
-  const { currentAccountId } = useOutletContext(); // ✅ GLOBAL ACCOUNT
+  const { currentAccount } = useAccount();
 
   const [account, setAccount] = useState(null);
   const [members, setMembers] = useState([]);
@@ -46,7 +46,7 @@ export default function Settings() {
   // 🔥 FETCH ACCOUNT + MEMBERS
   useEffect(() => {
     const fetchAccountAndMembers = async () => {
-      if (!currentAccountId) {
+      if (!currentAccount) {
         setLoading(false);
         return;
       }
@@ -54,8 +54,7 @@ export default function Settings() {
       setLoading(true);
 
       try {
-        // 1. Get account doc
-        const accountRef = doc(db, "accounts", currentAccountId);
+        const accountRef = doc(db, "accounts", currentAccount);
         const accountSnap = await getDoc(accountRef);
 
         if (!accountSnap.exists()) {
@@ -64,16 +63,14 @@ export default function Settings() {
         }
 
         const accountData = {
-          id: currentAccountId,
+          id: currentAccount,
           ...accountSnap.data(),
         };
 
         setAccount(accountData);
 
-        // 2. Get members
         if (!accountData.members?.length) {
           setMembers([]);
-          setLoading(false);
           return;
         }
 
@@ -81,7 +78,7 @@ export default function Settings() {
 
         const q = query(
           usersRef,
-          where("__name__", "in", accountData.members.slice(0, 10)) // Firestore limit
+          where("__name__", "in", accountData.members.slice(0, 10))
         );
 
         const snapshot = await getDocs(q);
@@ -101,7 +98,7 @@ export default function Settings() {
     };
 
     fetchAccountAndMembers();
-  }, [currentAccountId]);
+  }, [currentAccount]);
 
   // ➕ ADD MEMBER
   const handleAddMember = async () => {
@@ -125,17 +122,14 @@ export default function Settings() {
         return;
       }
 
-      const invitedUserDoc = snapshot.docs[0];
-      const invitedUserId = invitedUserDoc.id;
+      const invitedUserId = snapshot.docs[0].id;
 
-      // 1. Add to account
       const accountRef = doc(db, "accounts", account.id);
 
       await updateDoc(accountRef, {
         members: arrayUnion(invitedUserId),
       });
 
-      // 2. Add account to user
       await updateDoc(doc(db, "users", invitedUserId), {
         accounts: arrayUnion(account.id),
       });
@@ -143,7 +137,7 @@ export default function Settings() {
       setSuccessMessage("✅ User successfully added!");
       setInviteEmail("");
 
-      // 🔄 Refresh members (simple way: refetch)
+      // Refresh
       const updatedSnap = await getDoc(accountRef);
       const updatedAccount = {
         id: account.id,
@@ -152,7 +146,6 @@ export default function Settings() {
 
       setAccount(updatedAccount);
 
-      // trigger refetch logic
       const usersQuery = query(
         collection(db, "users"),
         where("__name__", "in", updatedAccount.members.slice(0, 10))
@@ -175,15 +168,14 @@ export default function Settings() {
   // ⏳ LOADING
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="60vh">
+      <Box display="flex" justifyContent="center" mt={6}>
         <CircularProgress />
-        <Typography ml={2}>Loading members...</Typography>
       </Box>
     );
   }
 
-  // 🚫 NO ACCOUNT SELECTED
-  if (!currentAccountId) {
+  // 🚫 NO ACCOUNT
+  if (!currentAccount) {
     return (
       <Box textAlign="center" mt={8}>
         <Typography color="text.secondary">
