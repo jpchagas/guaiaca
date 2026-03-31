@@ -1,69 +1,92 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { auth, db } from "../firebaseConfig";
-import { doc, getDoc, collection, query, where} from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
 const AccountContext = createContext();
 
 export function AccountProvider({ children }) {
   const [accounts, setAccounts] = useState([]);
-  const [currentAccount, setCurrentAccount] = useState(null);
+  const [currentAccountId, setCurrentAccountId] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const currentAccount =
+    accounts.find((acc) => acc.id === currentAccountId) || null;
+
   useEffect(() => {
-    const fetchAccounts = async () => {
-      const user = auth.currentUser;
-      if (!user) {
+  const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    console.log("Auth state changed:", user);
+
+    if (!user) {
+      setAccounts([]);
+      setCurrentAccountId(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+
+      const accountIds = Array.isArray(userSnap.data()?.accounts)
+        ? userSnap.data().accounts
+        : [];
+
+      console.log("Fetched account IDs:", accountIds);
+
+      if (accountIds.length === 0) {
+        setAccounts([]);
+        setCurrentAccountId(null);
         setLoading(false);
         return;
       }
 
-      try {
-        const userSnap = await getDoc(doc(db, "users", user.uid));
+      // 🔥 Fetch accounts
+      const snapshots = await Promise.all(
+        accountIds.map((id) => getDoc(doc(db, "accounts", id)))
+      );
 
-        if (!userSnap.exists()) {
-          setLoading(false);
-          return;
-        }
-
-        const userData = userSnap.data();
-        const accountIds = userData.accounts || [];
-
-        // 🔥 Fetch account documents
-        const accountsData = [];
-
-        for (const id of accountIds) {
-          const accSnap = await getDoc(doc(db, "accounts", id));
-
-          if (accSnap.exists()) {
-            accountsData.push({
-              id,
-              ...accSnap.data(),
-            });
+      const accountsData = snapshots
+        .map((snap, index) => {
+          if (!snap.exists()) {
+            console.warn(`Account not found: ${accountIds[index]}`);
+            return null;
           }
-        }
+          return { id: accountIds[index], ...snap.data() };
+        })
+        .filter(Boolean);
 
-        setAccounts(accountsData);
+      console.log("Accounts loaded:", accountsData);
 
-        const stored = localStorage.getItem("currentAccountId");
+      setAccounts(accountsData);
 
-        const valid =
-          stored && accountIds.includes(stored)
-            ? stored
-            : accountIds[0] || null;
+      // 🔥 Restore selected account
+      const storedId = localStorage.getItem("currentAccountId");
 
-        setCurrentAccount(valid);
-      } catch (err) {
-        console.error("Error loading accounts:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
+      const validAccountId =
+        accountsData.find((acc) => acc.id === storedId)?.id ||
+        accountsData[0]?.id ||
+        null;
 
-    fetchAccounts();
-  }, []);
+      setCurrentAccountId(validAccountId);
+    } catch (error) {
+      console.error("Error loading accounts:", error);
+      setAccounts([]);
+      setCurrentAccountId(null);
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  return () => unsubscribe();
+}, []);
 
   const switchAccount = (accountId) => {
-    setCurrentAccount(accountId);
+    if (!accountId) return;
+    console.log("Switching account to:", accountId);
+    setCurrentAccountId(accountId);
     localStorage.setItem("currentAccountId", accountId);
   };
 
@@ -72,8 +95,9 @@ export function AccountProvider({ children }) {
       value={{
         accounts,
         currentAccount,
+        currentAccountId,
         switchAccount,
-        setAccounts, // useful after creating account
+        setAccounts,
         loading,
       }}
     >
@@ -83,5 +107,9 @@ export function AccountProvider({ children }) {
 }
 
 export function useAccount() {
-  return useContext(AccountContext);
+  const context = useContext(AccountContext);
+  if (!context) {
+    throw new Error("useAccount must be used within AccountProvider");
+  }
+  return context;
 }

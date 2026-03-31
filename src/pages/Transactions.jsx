@@ -52,7 +52,7 @@ export default function Transactions() {
     setLoading(true);
 
     try {
-      if (!currentAccount) {
+      if (!currentAccount?.id) {
         setTransactions([]);
         setLoading(false);
         return;
@@ -60,7 +60,7 @@ export default function Transactions() {
 
       const q = query(
         collection(db, "transactions"),
-        where("accountId", "==", currentAccount)
+        where("accountId", "==", currentAccount.id) // ✅ FIXED
       );
 
       const snapshot = await getDocs(q);
@@ -140,7 +140,7 @@ export default function Transactions() {
   }
 
   // 🚫 NO ACCOUNT
-  if (!currentAccount) {
+  if (!currentAccount?.id) {
     return (
       <Box textAlign="center" mt={8}>
         <Typography color="text.secondary">

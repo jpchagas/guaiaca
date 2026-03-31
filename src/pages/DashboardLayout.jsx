@@ -19,27 +19,13 @@ import {
   Container,
 } from "@mui/material";
 
-import {
-  Logout,
-  Home,
-  AccountBalanceWallet,
-  Settings,
-} from "@mui/icons-material";
+import { Logout, Home, AccountBalanceWallet, Settings } from "@mui/icons-material";
 import AddIcon from "@mui/icons-material/Add";
 
 import { useNavigate, Outlet, useLocation } from "react-router-dom";
 import { signOut } from "firebase/auth";
 import { auth, db } from "../firebaseConfig";
-
-import {
-  collection,
-  addDoc,
-  doc,
-  serverTimestamp,
-  setDoc,
-  arrayUnion,
-  updateDoc,
-} from "firebase/firestore";
+import { collection, addDoc, doc, serverTimestamp, setDoc, arrayUnion, updateDoc } from "firebase/firestore";
 
 import { parseFile } from "../services/parsers/parseFile";
 import { ingestTransactionsList } from "../services/ingestion/ingestTransactionsList";
@@ -50,33 +36,18 @@ import { useAccount } from "../context/AccountContext";
 export default function DashboardLayout() {
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
   const [error, setError] = useState(null);
-
-  const {
-    accounts,
-    currentAccount,
-    switchAccount,
-    setAccounts,
-    loading,
-  } = useAccount();
-
-  const [formData, setFormData] = useState({
-    description: "",
-    amount: "",
-    category: "",
-    date: "",
-  });
+  const { accounts = [], currentAccount, switchAccount, setAccounts, loading } = useAccount();
+  const [formData, setFormData] = useState({ description: "", amount: "", category: "", date: "" });
 
   const navigate = useNavigate();
   const location = useLocation();
   const fileInputRef = useRef(null);
 
-  // ---------------- LOGOUT ----------------
   const handleLogout = async () => {
     await signOut(auth);
     navigate("/");
   };
 
-  // ---------------- NAV ----------------
   const getPageTitle = () => {
     if (location.pathname.includes("transactions")) return "Transactions";
     if (location.pathname.includes("settings")) return "Settings";
@@ -89,7 +60,6 @@ export default function DashboardLayout() {
     return 0;
   };
 
-  // ---------------- CREATE ACCOUNT ----------------
   const handleCreateAccount = async () => {
     const currentUser = auth.currentUser;
     if (!currentUser) return;
@@ -107,22 +77,14 @@ export default function DashboardLayout() {
         accounts: arrayUnion(newAccountRef.id),
       });
 
-      // 🔥 Update context state
-      setAccounts((prev) => [
-        ...prev,
-        {
-          id: newAccountRef.id,
-          name: "New Account",
-        },
-      ]);
-
+      // Update context safely
+      setAccounts(prev => [...(prev || []), { id: newAccountRef.id, name: "New Account" }]);
       switchAccount(newAccountRef.id);
     } catch (err) {
       console.error("Error creating account:", err);
     }
   };
 
-  // ---------------- FILE UPLOAD ----------------
   const handleFileChange = async (e) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
@@ -137,13 +99,12 @@ export default function DashboardLayout() {
     try {
       const parsedTransactions = await parseFile(selectedFile);
 
-      if (parsedTransactions?.length) {
+      if (Array.isArray(parsedTransactions) && parsedTransactions.length > 0) {
         const enriched = parsedTransactions.map((tx) => ({
           ...tx,
-          accountId: currentAccount,
+          accountId: currentAccount.id,
           createdAt: serverTimestamp(),
         }));
-
         await ingestTransactionsList(enriched);
       } else {
         setError("No valid transactions found.");
@@ -153,10 +114,9 @@ export default function DashboardLayout() {
     }
   };
 
-  // ---------------- FORM ----------------
   const handleFormChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleManualSubmit = async () => {
@@ -168,25 +128,19 @@ export default function DashboardLayout() {
 
       await addDoc(collection(db, "transactions"), {
         ...formData,
-        amount: parseFloat(formData.amount),
-        accountId: currentAccount,
+        amount: parseFloat(formData.amount) || 0,
+        accountId: currentAccount.id,
         createdAt: serverTimestamp(),
       });
 
       setManualDialogOpen(false);
-
-      setFormData({
-        description: "",
-        amount: "",
-        category: "",
-        date: "",
-      });
-    } catch (error) {
+      setFormData({ description: "", amount: "", category: "", date: "" });
+    } catch (err) {
+      console.error(err);
       setError("Error adding transaction");
     }
   };
 
-  // ---------------- LOADING ----------------
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" mt={10}>
@@ -199,23 +153,22 @@ export default function DashboardLayout() {
     <Box sx={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
       {/* TOP BAR */}
       <AppBar position="fixed">
-        <Toolbar sx={{ justifyContent: "space-between" }}>
-          <Box>
-            <Typography variant="h6" fontWeight={600}>
-              {getPageTitle()}
-            </Typography>
+        <Toolbar sx={{ position: "relative" }}>
+          <Typography variant="h6" fontWeight={600}>{getPageTitle()}</Typography>
 
+          {/* Account Switcher */}
+          <Box sx={{ position: "absolute", left: "50%", transform: "translateX(-50%)" }}>
             <AccountSwitcher
-              accounts={accounts}
-              currentAccountId={currentAccount}
+              accounts={accounts || []}
+              currentAccountId={currentAccount?.id}
               onChange={switchAccount}
               onCreateAccount={handleCreateAccount}
             />
           </Box>
 
-          <IconButton onClick={handleLogout}>
-            <Logout />
-          </IconButton>
+          <Box sx={{ marginLeft: "auto" }}>
+            <IconButton onClick={handleLogout}><Logout /></IconButton>
+          </Box>
         </Toolbar>
       </AppBar>
 
@@ -229,16 +182,7 @@ export default function DashboardLayout() {
       </Box>
 
       {/* BOTTOM NAV */}
-      <Paper
-        sx={{
-          position: "fixed",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          borderTop: "1px solid rgba(0,0,0,0.06)",
-        }}
-        elevation={0}
-      >
+      <Paper sx={{ position: "fixed", bottom: 0, left: 0, right: 0, borderTop: "1px solid rgba(0,0,0,0.06)" }} elevation={0}>
         <BottomNavigation
           value={getNavIndex()}
           onChange={(e, newValue) => {
@@ -248,86 +192,31 @@ export default function DashboardLayout() {
           }}
         >
           <BottomNavigationAction label="Overview" icon={<Home />} />
-          <BottomNavigationAction
-            label="Transactions"
-            icon={<AccountBalanceWallet />}
-          />
+          <BottomNavigationAction label="Transactions" icon={<AccountBalanceWallet />} />
           <BottomNavigationAction label="Settings" icon={<Settings />} />
         </BottomNavigation>
       </Paper>
 
       {/* FAB */}
-      <Fab
-        onClick={() => setManualDialogOpen(true)}
-        sx={{ position: "fixed", bottom: 88, right: 20 }}
-      >
+      <Fab onClick={() => setManualDialogOpen(true)} sx={{ position: "fixed", bottom: 88, right: 20 }}>
         <AddIcon />
       </Fab>
 
       {/* DIALOG */}
-      <Dialog
-        open={manualDialogOpen}
-        onClose={() => setManualDialogOpen(false)}
-        fullWidth
-      >
+      <Dialog open={manualDialogOpen} onClose={() => setManualDialogOpen(false)} fullWidth>
         <DialogTitle>Add Transaction</DialogTitle>
-
-        <DialogContent
-          sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}
-        >
-          <Button
-            variant="outlined"
-            onClick={() => fileInputRef.current.click()}
-          >
-            Upload File
-          </Button>
-
-          <input
-            type="file"
-            hidden
-            ref={fileInputRef}
-            onChange={handleFileChange}
-          />
-
+        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}>
+          <Button variant="outlined" onClick={() => fileInputRef.current.click()}>Upload File</Button>
+          <input type="file" hidden ref={fileInputRef} onChange={handleFileChange} />
           {error && <Alert severity="error">{error}</Alert>}
-
-          <TextField
-            label="Description"
-            name="description"
-            value={formData.description}
-            onChange={handleFormChange}
-          />
-
-          <TextField
-            label="Amount"
-            name="amount"
-            type="number"
-            value={formData.amount}
-            onChange={handleFormChange}
-          />
-
-          <TextField
-            label="Category"
-            name="category"
-            value={formData.category}
-            onChange={handleFormChange}
-          />
-
-          <TextField
-            label="Date"
-            name="date"
-            type="date"
-            InputLabelProps={{ shrink: true }}
-            value={formData.date}
-            onChange={handleFormChange}
-          />
+          <TextField label="Description" name="description" value={formData.description} onChange={handleFormChange} />
+          <TextField label="Amount" name="amount" type="number" value={formData.amount} onChange={handleFormChange} />
+          <TextField label="Category" name="category" value={formData.category} onChange={handleFormChange} />
+          <TextField label="Date" name="date" type="date" InputLabelProps={{ shrink: true }} value={formData.date} onChange={handleFormChange} />
         </DialogContent>
-
         <DialogActions sx={{ p: 2 }}>
           <Button onClick={() => setManualDialogOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleManualSubmit}>
-            Add
-          </Button>
+          <Button variant="contained" onClick={handleManualSubmit}>Add</Button>
         </DialogActions>
       </Dialog>
     </Box>

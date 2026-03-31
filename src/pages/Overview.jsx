@@ -63,38 +63,38 @@ export default function Overview() {
 
   // -------------------- FETCH TRANSACTIONS --------------------
   useEffect(() => {
-    const fetchTransactions = async () => {
-      if (!currentAccount) {
-        setTransactions([]);
-        setLoading(false);
-        return;
-      }
+  const fetchTransactions = async () => {
+    if (!currentAccount?.id) {
+      setTransactions([]);
+      setLoading(false);
+      return;
+    }
 
-      setLoading(true);
+    setLoading(true);
 
-      try {
-        const q = query(
-          collection(db, "transactions"),
-          where("accountId", "==", currentAccount)
-        );
+    try {
+      const q = query(
+        collection(db, "transactions"),
+        where("accountId", "==", currentAccount.id) // ✅ FIX HERE
+      );
 
-        const snapshot = await getDocs(q);
+      const snapshot = await getDocs(q);
 
-        const data = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
 
-        setTransactions(data);
-      } catch (err) {
-        console.error("Error fetching transactions:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
+      setTransactions(data);
+    } catch (err) {
+      console.error("Error fetching transactions:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchTransactions();
-  }, [currentAccount]);
+  fetchTransactions();
+}, [currentAccount]);
 
   // -------------------- FILTERS --------------------
   const filteredTransactions = useMemo(() => {

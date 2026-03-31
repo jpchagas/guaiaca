@@ -46,7 +46,7 @@ export default function Settings() {
   // 🔥 FETCH ACCOUNT + MEMBERS
   useEffect(() => {
     const fetchAccountAndMembers = async () => {
-      if (!currentAccount) {
+      if (!currentAccount?.id) {
         setLoading(false);
         return;
       }
@@ -54,7 +54,7 @@ export default function Settings() {
       setLoading(true);
 
       try {
-        const accountRef = doc(db, "accounts", currentAccount);
+        const accountRef = doc(db, "accounts", currentAccount.id); // ✅ FIXED
         const accountSnap = await getDoc(accountRef);
 
         if (!accountSnap.exists()) {
@@ -63,7 +63,7 @@ export default function Settings() {
         }
 
         const accountData = {
-          id: currentAccount,
+          id: currentAccount.id, // ✅ FIXED
           ...accountSnap.data(),
         };
 
@@ -102,7 +102,7 @@ export default function Settings() {
 
   // ➕ ADD MEMBER
   const handleAddMember = async () => {
-    if (!account) return;
+    if (!account?.id) return;
 
     setSuccessMessage("");
     setErrorMessage("");
@@ -175,7 +175,7 @@ export default function Settings() {
   }
 
   // 🚫 NO ACCOUNT
-  if (!currentAccount) {
+  if (!currentAccount?.id) {
     return (
       <Box textAlign="center" mt={8}>
         <Typography color="text.secondary">
