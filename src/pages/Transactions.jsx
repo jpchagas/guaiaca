@@ -19,7 +19,7 @@ import {
   collection,
   query,
   where,
-  getDocs,
+  onSnapshot,
   doc,
   deleteDoc,
 } from "firebase/firestore";
@@ -43,45 +43,46 @@ export default function Transactions() {
 
   const [deleteId, setDeleteId] = useState(null);
 
-  // 🔥 FETCH TRANSACTIONS
+  // 🔥 REALTIME LISTENER
   useEffect(() => {
-    fetchTransactions();
-  }, [currentAccount]);
+    if (!currentAccount?.id) {
+      setTransactions([]);
+      setLoading(false);
+      return;
+    }
 
-  async function fetchTransactions() {
     setLoading(true);
 
-    try {
-      if (!currentAccount?.id) {
-        setTransactions([]);
+    const q = query(
+      collection(db, "transactions"),
+      where("accountId", "==", currentAccount.id)
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const data = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        }));
+
+        setTransactions(data);
         setLoading(false);
-        return;
+      },
+      (err) => {
+        console.error(err);
+        setSnackbar({
+          open: true,
+          severity: "error",
+          message: "Failed to fetch transactions.",
+        });
+        setLoading(false);
       }
+    );
 
-      const q = query(
-        collection(db, "transactions"),
-        where("accountId", "==", currentAccount.id) // ✅ FIXED
-      );
-
-      const snapshot = await getDocs(q);
-
-      const data = snapshot.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      }));
-
-      setTransactions(data);
-    } catch (err) {
-      console.error(err);
-      setSnackbar({
-        open: true,
-        severity: "error",
-        message: "Failed to fetch transactions.",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }
+    // 🔥 cleanup on account change
+    return () => unsubscribe();
+  }, [currentAccount?.id]);
 
   // 🔍 FILTERS
   const filteredTransactions = useMemo(() => {
@@ -105,7 +106,8 @@ export default function Transactions() {
     try {
       await deleteDoc(doc(db, "transactions", deleteId));
 
-      setTransactions((prev) => prev.filter((t) => t.id !== deleteId));
+      // ❌ DO NOT manually update state anymore
+      // onSnapshot will handle it
 
       setSnackbar({
         open: true,

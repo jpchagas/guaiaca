@@ -6,14 +6,12 @@ import {
   CircularProgress,
 } from "@mui/material";
 
-import { db, auth } from "../firebaseConfig";
+import { db } from "../firebaseConfig";
 import {
   collection,
-  getDocs,
   query,
   where,
-  doc,
-  getDoc,
+  onSnapshot,
 } from "firebase/firestore";
 
 import {
@@ -32,38 +30,12 @@ const COLORS = ["#2E7D32", "#66BB6A", "#FFB300", "#E0E0E0"];
 export default function Overview() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
 
   const { filters } = useFilters();
-
-  // ✅ GLOBAL ACCOUNT CONTEXT
   const { currentAccount } = useAccount();
 
-  // -------------------- FETCH USER --------------------
+  // -------------------- REALTIME TRANSACTIONS --------------------
   useEffect(() => {
-    const fetchUser = async () => {
-      const currentUser = auth.currentUser;
-      if (!currentUser) return;
-
-      try {
-        const userRef = doc(db, "users", currentUser.uid);
-        const userSnap = await getDoc(userRef);
-
-        if (!userSnap.exists()) return;
-
-        const userData = userSnap.data();
-        setUser({ id: currentUser.uid, ...userData });
-      } catch (err) {
-        console.error("Error fetching user:", err);
-      }
-    };
-
-    fetchUser();
-  }, []);
-
-  // -------------------- FETCH TRANSACTIONS --------------------
-  useEffect(() => {
-  const fetchTransactions = async () => {
     if (!currentAccount?.id) {
       setTransactions([]);
       setLoading(false);
@@ -72,35 +44,47 @@ export default function Overview() {
 
     setLoading(true);
 
-    try {
-      const q = query(
-        collection(db, "transactions"),
-        where("accountId", "==", currentAccount.id) // ✅ FIX HERE
-      );
+    const q = query(
+      collection(db, "transactions"),
+      where("accountId", "==", currentAccount.id)
+    );
 
-      const snapshot = await getDocs(q);
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const data = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
 
-      const data = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+        setTransactions(data);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Error fetching transactions:", err);
+        setLoading(false);
+      }
+    );
 
-      setTransactions(data);
-    } catch (err) {
-      console.error("Error fetching transactions:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  fetchTransactions();
-}, [currentAccount]);
+    return () => unsubscribe();
+  }, [currentAccount?.id]);
 
   // -------------------- FILTERS --------------------
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
-      if (filters?.dateFrom && tx.date < filters.dateFrom) return false;
-      if (filters?.dateTo && tx.date > filters.dateTo) return false;
+      if (!tx.date) return false;
+
+      const txDate =
+        typeof tx.date?.toDate === "function"
+          ? tx.date.toDate()
+          : new Date(tx.date);
+
+      if (filters?.dateFrom && txDate < new Date(filters.dateFrom))
+        return false;
+
+      if (filters?.dateTo && txDate > new Date(filters.dateTo))
+        return false;
+
       return true;
     });
   }, [transactions, filters]);
@@ -155,7 +139,7 @@ export default function Overview() {
   return (
     <Box>
       {/* EMPTY STATE */}
-      {!currentAccount && (
+      {!currentAccount?.id && (
         <Box textAlign="center" mt={6}>
           <Typography color="text.secondary">
             Select or create an account to get started
@@ -164,7 +148,7 @@ export default function Overview() {
       )}
 
       {/* CONTENT */}
-      {currentAccount && (
+      {currentAccount?.id && (
         <>
           {/* BALANCE */}
           <Paper

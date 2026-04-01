@@ -19,13 +19,13 @@ import {
 import { db } from "../firebaseConfig";
 import {
   doc,
-  getDoc,
   updateDoc,
   collection,
   arrayUnion,
   query,
   where,
   getDocs,
+  onSnapshot,
 } from "firebase/firestore";
 
 import { useAccount } from "../context/AccountContext";
@@ -43,62 +43,70 @@ export default function Settings() {
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
-  // 🔥 FETCH ACCOUNT + MEMBERS
+  // 🔥 REALTIME ACCOUNT + MEMBERS
   useEffect(() => {
-    const fetchAccountAndMembers = async () => {
-      if (!currentAccount?.id) {
+    if (!currentAccount?.id) {
+      setAccount(null);
+      setMembers([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
+    let unsubscribeMembers = null;
+
+    const accountRef = doc(db, "accounts", currentAccount.id);
+
+    const unsubscribeAccount = onSnapshot(accountRef, (accountSnap) => {
+      if (!accountSnap.exists()) {
+        setAccount(null);
+        setMembers([]);
         setLoading(false);
         return;
       }
 
-      setLoading(true);
+      const accountData = {
+        id: accountSnap.id,
+        ...accountSnap.data(),
+      };
 
-      try {
-        const accountRef = doc(db, "accounts", currentAccount.id); // ✅ FIXED
-        const accountSnap = await getDoc(accountRef);
+      setAccount(accountData);
 
-        if (!accountSnap.exists()) {
-          setLoading(false);
-          return;
-        }
+      const memberIds = Array.isArray(accountData.members)
+        ? accountData.members.slice(0, 10)
+        : [];
 
-        const accountData = {
-          id: currentAccount.id, // ✅ FIXED
-          ...accountSnap.data(),
-        };
+      // 🔥 cleanup previous members listener
+      if (unsubscribeMembers) unsubscribeMembers();
 
-        setAccount(accountData);
+      if (memberIds.length === 0) {
+        setMembers([]);
+        setLoading(false);
+        return;
+      }
 
-        if (!accountData.members?.length) {
-          setMembers([]);
-          return;
-        }
+      const usersQuery = query(
+        collection(db, "users"),
+        where("__name__", "in", memberIds)
+      );
 
-        const usersRef = collection(db, "users");
-
-        const q = query(
-          usersRef,
-          where("__name__", "in", accountData.members.slice(0, 10))
-        );
-
-        const snapshot = await getDocs(q);
-
-        const fetchedMembers = snapshot.docs.map((doc) => ({
+      unsubscribeMembers = onSnapshot(usersQuery, (snapshot) => {
+        const users = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
 
-        setMembers(fetchedMembers);
-      } catch (err) {
-        console.error("Error fetching members:", err);
-        setErrorMessage("Failed to fetch members.");
-      } finally {
+        setMembers(users);
         setLoading(false);
-      }
-    };
+      });
+    });
 
-    fetchAccountAndMembers();
-  }, [currentAccount]);
+    return () => {
+      unsubscribeAccount();
+      if (unsubscribeMembers) unsubscribeMembers();
+    };
+  }, [currentAccount?.id]);
 
   // ➕ ADD MEMBER
   const handleAddMember = async () => {
@@ -137,28 +145,7 @@ export default function Settings() {
       setSuccessMessage("✅ User successfully added!");
       setInviteEmail("");
 
-      // Refresh
-      const updatedSnap = await getDoc(accountRef);
-      const updatedAccount = {
-        id: account.id,
-        ...updatedSnap.data(),
-      };
-
-      setAccount(updatedAccount);
-
-      const usersQuery = query(
-        collection(db, "users"),
-        where("__name__", "in", updatedAccount.members.slice(0, 10))
-      );
-
-      const usersSnap = await getDocs(usersQuery);
-
-      setMembers(
-        usersSnap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }))
-      );
+      // ❌ NO manual refresh anymore
     } catch (err) {
       console.error(err);
       setErrorMessage("❌ Error adding member.");

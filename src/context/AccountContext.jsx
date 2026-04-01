@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { auth, db } from "../firebaseConfig";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, collection, query, where, onSnapshot } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
 const AccountContext = createContext();
@@ -14,74 +14,89 @@ export function AccountProvider({ children }) {
     accounts.find((acc) => acc.id === currentAccountId) || null;
 
   useEffect(() => {
-  const unsubscribe = onAuthStateChanged(auth, async (user) => {
-    console.log("Auth state changed:", user);
+    let unsubscribeUser = null;
+    let unsubscribeAccounts = null;
 
-    if (!user) {
-      setAccounts([]);
-      setCurrentAccountId(null);
-      setLoading(false);
-      return;
-    }
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      console.log("Auth state changed:", user);
 
-    setLoading(true);
+      // 🔥 cleanup previous listeners
+      if (unsubscribeUser) unsubscribeUser();
+      if (unsubscribeAccounts) unsubscribeAccounts();
 
-    try {
-      const userRef = doc(db, "users", user.uid);
-      const userSnap = await getDoc(userRef);
-
-      const accountIds = Array.isArray(userSnap.data()?.accounts)
-        ? userSnap.data().accounts
-        : [];
-
-      console.log("Fetched account IDs:", accountIds);
-
-      if (accountIds.length === 0) {
+      if (!user) {
         setAccounts([]);
         setCurrentAccountId(null);
         setLoading(false);
         return;
       }
 
-      // 🔥 Fetch accounts
-      const snapshots = await Promise.all(
-        accountIds.map((id) => getDoc(doc(db, "accounts", id)))
-      );
+      setLoading(true);
 
-      const accountsData = snapshots
-        .map((snap, index) => {
-          if (!snap.exists()) {
-            console.warn(`Account not found: ${accountIds[index]}`);
-            return null;
-          }
-          return { id: accountIds[index], ...snap.data() };
-        })
-        .filter(Boolean);
+      // 🔥 1. Listen to user doc (for accountIds)
+      const userRef = doc(db, "users", user.uid);
 
-      console.log("Accounts loaded:", accountsData);
+      unsubscribeUser = onSnapshot(userRef, (userSnap) => {
+        const accountIds = Array.isArray(userSnap.data()?.accounts)
+          ? userSnap.data().accounts
+          : [];
 
-      setAccounts(accountsData);
+        console.log("Realtime account IDs:", accountIds);
 
-      // 🔥 Restore selected account
-      const storedId = localStorage.getItem("currentAccountId");
+        if (accountIds.length === 0) {
+          setAccounts([]);
+          setCurrentAccountId(null);
+          setLoading(false);
+          return;
+        }
 
-      const validAccountId =
-        accountsData.find((acc) => acc.id === storedId)?.id ||
-        accountsData[0]?.id ||
-        null;
+        // 🔥 cleanup previous accounts listener
+        if (unsubscribeAccounts) unsubscribeAccounts();
 
-      setCurrentAccountId(validAccountId);
-    } catch (error) {
-      console.error("Error loading accounts:", error);
-      setAccounts([]);
-      setCurrentAccountId(null);
-    } finally {
-      setLoading(false);
-    }
-  });
+        // 🔥 2. Listen to accounts in real-time
+        const q = query(
+          collection(db, "accounts"),
+          where("__name__", "in", accountIds)
+        );
 
-  return () => unsubscribe();
-}, []);
+        unsubscribeAccounts = onSnapshot(q, (snapshot) => {
+          const accountsData = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          }));
+
+          console.log("Realtime accounts:", accountsData);
+
+          setAccounts(accountsData);
+
+          // 🔥 Maintain selected account (CRITICAL)
+          setCurrentAccountId((prevId) => {
+            const storedId = localStorage.getItem("currentAccountId");
+
+            const validId =
+              accountsData.find((acc) => acc.id === prevId)?.id ||
+              accountsData.find((acc) => acc.id === storedId)?.id ||
+              accountsData[0]?.id ||
+              null;
+
+            if (validId) {
+              localStorage.setItem("currentAccountId", validId);
+            }
+
+            return validId;
+          });
+
+          setLoading(false);
+        });
+      });
+    });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeUser) unsubscribeUser();
+      if (unsubscribeAccounts) unsubscribeAccounts();
+    };
+  }, []);
 
   const switchAccount = (accountId) => {
     if (!accountId) return;

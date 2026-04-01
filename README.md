@@ -125,13 +125,9 @@ Dark mode 🌙
 
 
 Turn “Create Account” into a proper modal flow
-Or upgrade AccountContext to real-time (onSnapshot)
-
 Create Account Modal (with name input + validation)
-
-switch to onSnapshot, your app becomes real-time shared finance (huge UX win).
-
-on account selection show name not id
+Turn this into a modal / bottom sheet selector (mobile-native)
+Turn selector into a modern fintech dropdown (avatars, balances, etc.)
 
 create an month filter on top too
 
@@ -139,161 +135,143 @@ the share account should be something like xepa app
 
 instead settings should be budget
 
-👉 Upgrade AccountContext to fetch full account objects (id + name)
-
-Turn this into a modal / bottom sheet selector (mobile-native)
-
 Later, you should move this logic to a global AuthContext, and let AccountContext depend on it.
 
-Add real-time updates (onSnapshot) for accounts
-
-Add real-time listener (onSnapshot) → instant updates
 Add multi-account dashboard (aggregate view)
-Turn selector into a modern fintech dropdown (avatars, balances, etc.)
+
+
+👉 Build Edit Transaction
 
 ## Current Context
 
-🧾 Guaiaca Project — Progress Summary (Updated v2)
+🧾 Guaiaca Project — Progress Summary (Updated v3)
 
-Date: 2026-03-30
-Phase: Multi-account stabilization + Firestore correctness + bug fixing
+Date: 2026-03-31
+Phase: Multi-account stabilization + Firestore correctness + full layout integration
 
 🔥 NEW: Critical Fixes & Stabilization (Today)
 1. 🧠 Account State — FINALIZED (Major Fix)
+
 ✅ Fixed
+
 AccountContext now properly waits for auth
 Eliminated "No user logged in" race condition
 Accounts now load reliably on refresh
+
 🆕 Improvement
+
 onAuthStateChanged → fetchAccounts(user)
+Account selection fully synchronized with Firestore real-time updates
+
 Result
 
 ✅ No more empty account list on load
 ✅ Account switcher fully stable
 ✅ Correct hydration from Firestore
-
 2. ❗ Root Bug Identified (Core Learning)
+
 🚨 Main issue across app:
 
 You were mixing:
 
-currentAccount  // object ❌
-currentAccount.id // string ✅
-✅ Standard Rule (VERY IMPORTANT)
-Use case	Correct value
-Firestore query	currentAccount.id
-doc()	currentAccount.id
-UI display	currentAccount.name
-checks	currentAccount?.id
-🧹 Fixed Across Entire App
-✅ Overview.jsx
-Fixed query:
-where("accountId", "==", currentAccount.id)
-✅ Transactions.jsx
-Fixed query
-Fixed loading conditions
-Fixed empty state logic
-✅ Settings.jsx
-Fixed doc() crash (indexOf error)
-Fixed account fetch
-Fixed member queries
-🎯 Result
+Use case	Wrong Value ❌	Correct Value ✅
+Firestore query	currentAccount (object)	currentAccount.id (string)
+doc()	currentAccount	currentAccount.id
+UI display	currentAccount.id	currentAccount.name
+Checks	currentAccount	currentAccount?.id
+
+🧹 Fixed Across Entire App:
+
+Overview.jsx: fixed queries & empty state
+Transactions.jsx: fixed query & loading conditions
+Settings.jsx: fixed doc() crash, account fetch, member queries
+DashboardLayout.jsx: updated file upload + manual transaction logic, safe FAB handling
+
+🎯 Result:
 
 ✅ No more:
-
-Missing or insufficient permissions
+Missing permissions
 indexOf is not a function
-empty account bugs
-broken queries
-🔐 Firestore Rules — Now Compatible
-Your rules were already correct ✅
+Empty account bugs
+Broken queries
+3. 🔐 Firestore Rules — Compatibility
+Rules were already correct ✅
+Problem was data shape
 
-But your app was sending wrong data:
+Old broken data:
 
 accountId: { id: "...", name: "..." } ❌
 
-Now:
+New correct data:
 
 accountId: "abc123" ✅
-🧠 Key Insight
 
-Firestore rules were NEVER the problem
-Your data shape was
+🧠 Insight: Firestore rules were never the root problem; data modeling was.
 
 🏦 Account System (UPDATED STATUS)
+
 ✅ Now Fully Working
+
 Account creation
 Account switching
 Persistent selection (localStorage)
 Global availability via Context
 Firestore sync working correctly
-🆕 Stability Upgrade
-Safe guards:
-if (!currentAccount?.id)
+
+🆕 Stability Upgrade:
+
+Safe guards: if (!currentAccount?.id)
 👨‍👩‍👧 Members System (UPDATED)
-✅ Fixed
+
+✅ Fixed:
+
 Members fetch no longer crashes
-Account reference now correct
-Queries now valid
-⚠️ Still Limited
+Account references now correct
+Queries valid up to 10 members
+
+⚠️ Still Limited:
+
 where("__name__", "in", [...]) → max 10 users
 No pagination yet
 💰 Transactions System (UPDATED)
-✅ Fixed
+
+✅ Fixed:
+
 Queries now valid
 Firestore rules passing
-Deletion working correctly
-⚠️ Still Pending
+Deletion works correctly
+
+⚠️ Still Pending:
+
 Edit transaction
-Pagination
-Grouping / better UX
+Pagination / grouping / better UX
 ⚠️ Remaining Known Issues (Updated)
-🔴 High Priority
-1. Firestore Data Consistency
 
-⚠️ You must ensure ALL writes use:
+🔴 High Priority:
 
-accountId: currentAccount.id
-
-👉 Old broken data may still exist
-
-2. Missing Validation Layer
-
-No schema enforcement yet:
-
-amount type
-date format
-classification consistency
-3. Error Handling
-
+Firestore Data Consistency
+Ensure all writes use: accountId: currentAccount.id
+Old broken data may still exist
+Missing Validation Layer
+No schema enforcement yet (amount type, date format, category consistency)
+Error Handling
 Still local (Snackbar-based)
+Needs centralized handler & standardized messages
 
-Needs:
+🟡 Medium Priority:
 
-centralized handler
-standardized messages
-🟡 Medium Priority
-Account UX
-Rename account
-Delete account
-Roles (owner/admin/member)
-Transactions UX
-Edit flow
-Sorting
-Pagination
-Members
-Remove member
-Roles
+Account UX: rename, delete, roles (owner/admin/member)
+Transactions UX: edit flow, sorting, pagination
+Members: remove member, roles
 🧠 Architecture Status (UPDATED)
+
 ✅ Strong (Production-Level)
 
-✔ Context-driven global state
-✔ Clean separation (Context / Layout / Pages)
-✔ Multi-account scalable model
-✔ Firebase structure aligned
-
+Context-driven global state
+Clean separation: Context / Layout / Pages
+Multi-account scalable model
+Firebase structure aligned
 🔥 Big Achievement Today
-
 You crossed this line:
 
 ❌ "App works but fragile"
@@ -301,34 +279,44 @@ You crossed this line:
 ✅ "App is structurally correct and predictable"
 
 🚀 Updated Roadmap
+
 🔴 Priority 1 — Data Integrity & Security
- Firestore rules hardening (edge cases)
- Data validation layer (VERY important)
- Migration/cleanup of old transactions
+
+Firestore rules hardening (edge cases)
+Data validation layer
+Migration / cleanup of old transactions
+
 🟡 Priority 2 — Core UX
- Create Account with name input
- Rename account
- Edit transaction
- Member roles
+
+Create account with name input
+Rename account
+Edit transaction
+Member roles
+
 🟢 Priority 3 — Performance
- Pagination (transactions)
- Query optimization
- Batch writes
+
+Pagination (transactions)
+Query optimization
+Batch writes
+
 🔵 Priority 4 — UI Polish
- Design consistency
- Dark mode polish
- Micro-interactions
+
+Design consistency
+Dark mode polish
+Micro-interactions
 🧠 Final Assessment (Updated)
-✅ You Now Have
-✔ Real multi-account architecture
-✔ Correct Firestore usage
-✔ Stable global state
-✔ Clean React architecture
-✔ Mobile-first UX
-⚠️ Next Bottleneck
+
+✅ You Now Have:
+
+Real multi-account architecture
+Correct Firestore usage
+Stable global state
+Clean React architecture
+Mobile-first UX
+
+⚠️ Next Bottleneck:
 
 Not architecture anymore — data quality & UX
-
 💬 Final Note (Important)
 
 The hardest part is DONE.
@@ -339,4 +327,4 @@ async auth race conditions
 Firestore query correctness
 data modeling mistakes
 
-These are senior-level bugs, not beginner ones.
+Senior-level bugs, not beginner ones.
