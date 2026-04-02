@@ -1,10 +1,10 @@
 import { db, auth } from "../../firebaseConfig";
-import { collection, addDoc, doc, getDoc, serverTimestamp } from "firebase/firestore";
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 
-/**
- * Ingest a parsed transaction list directly into Firestore.
- * @param {Array} transactions - Array of {date, description, amount, category, bank}
- */
 export async function ingestTransactionsList(transactions) {
   console.log("🚀 Ingesting parsed transactions into Firestore");
 
@@ -12,32 +12,39 @@ export async function ingestTransactionsList(transactions) {
     const user = auth.currentUser;
     if (!user) throw new Error("User not authenticated");
 
-    const userRef = doc(db, "users", user.uid);
-    const userSnap = await getDoc(userRef);
-    const householdId = userSnap.data()?.householdId;
-    if (!householdId) throw new Error("No household assigned");
-
     const txCollection = collection(db, "transactions");
 
-    // Batch insert (async sequentially)
     for (const tx of transactions) {
-      const { date, description, category, amount, bank } = tx;
-      if (!date || !amount) continue;
+      if (!tx?.accountId) continue;
+
+      const amount = Number(tx.amount) || 0;
+      if (!tx.date || !amount) continue;
 
       await addDoc(txCollection, {
-        date,
-        description: description || "",
-        category: category || "Other",
-        amount: parseFloat(amount),
-        bank: bank || "Unknown",
-        householdId,
+        description: tx.description || "",
+        category: tx.category || "Other",
+        amount,
+
+        // ✅ FIXED
+        classification:
+          tx.classification ||
+          (amount >= 0 ? "revenue" : "expense"),
+
+        accountId: tx.accountId,
+
+        date:
+          typeof tx.date === "string"
+            ? tx.date
+            : new Date(tx.date).toISOString().split("T")[0],
+
+        bank: tx.bank || "Unknown",
         createdAt: serverTimestamp(),
       });
     }
 
-    console.log(`✅ ${transactions.length} transactions imported successfully.`);
+    console.log(`✅ ${transactions.length} transactions imported.`);
   } catch (err) {
-    console.error("❌ Error ingesting transactions:", err);
+    console.error(err);
     throw err;
   }
 }

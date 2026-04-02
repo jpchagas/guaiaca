@@ -34,7 +34,6 @@ export default function Overview() {
   const { filters } = useFilters();
   const { currentAccount } = useAccount();
 
-  // -------------------- REALTIME TRANSACTIONS --------------------
   useEffect(() => {
     if (!currentAccount?.id) {
       setTransactions([]);
@@ -49,27 +48,19 @@ export default function Overview() {
       where("accountId", "==", currentAccount.id)
     );
 
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const data = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
 
-        setTransactions(data);
-        setLoading(false);
-      },
-      (err) => {
-        console.error("Error fetching transactions:", err);
-        setLoading(false);
-      }
-    );
+      setTransactions(data);
+      setLoading(false);
+    });
 
     return () => unsubscribe();
   }, [currentAccount?.id]);
 
-  // -------------------- FILTERS --------------------
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
       if (!tx.date) return false;
@@ -89,7 +80,6 @@ export default function Overview() {
     });
   }, [transactions, filters]);
 
-  // -------------------- TOTALS --------------------
   const { income, expenses, investments } = useMemo(() => {
     let income = 0,
       expenses = 0,
@@ -98,9 +88,19 @@ export default function Overview() {
     filteredTransactions.forEach((t) => {
       const amount = Number(t.amount) || 0;
 
-      if (t.classification === "revenue") income += amount;
-      if (t.classification === "expense") expenses += amount;
-      if (t.classification === "investment") investments += amount;
+      switch (t.classification) {
+        case "revenue":
+          income += amount;
+          break;
+        case "expense":
+          expenses += amount;
+          break;
+        case "investment":
+          investments += amount;
+          break;
+        default:
+          break;
+      }
     });
 
     return { income, expenses, investments };
@@ -108,7 +108,6 @@ export default function Overview() {
 
   const balance = income - expenses - investments;
 
-  // -------------------- PIE DATA --------------------
   const pieData = useMemo(() => {
     const expenseTransactions = filteredTransactions.filter(
       (t) => t.classification === "expense"
@@ -126,7 +125,6 @@ export default function Overview() {
     }));
   }, [filteredTransactions]);
 
-  // -------------------- LOADING --------------------
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" mt={6}>
@@ -135,10 +133,8 @@ export default function Overview() {
     );
   }
 
-  // -------------------- UI --------------------
   return (
     <Box>
-      {/* EMPTY STATE */}
       {!currentAccount?.id && (
         <Box textAlign="center" mt={6}>
           <Typography color="text.secondary">
@@ -147,10 +143,8 @@ export default function Overview() {
         </Box>
       )}
 
-      {/* CONTENT */}
       {currentAccount?.id && (
         <>
-          {/* BALANCE */}
           <Paper
             sx={{
               p: 3,
@@ -169,7 +163,6 @@ export default function Overview() {
             </Typography>
           </Paper>
 
-          {/* CARDS */}
           <Box sx={{ display: "flex", gap: 2, overflowX: "auto", pb: 1 }}>
             {[
               { label: "Income", value: income, color: "success.main" },
@@ -199,7 +192,6 @@ export default function Overview() {
             ))}
           </Box>
 
-          {/* CHART */}
           <Paper sx={{ p: 2, mt: 3 }}>
             <Typography variant="subtitle1" mb={2}>
               Spending by Category

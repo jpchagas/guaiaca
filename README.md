@@ -123,11 +123,8 @@ Household roles
 Charts improvements (trends over time)
 Dark mode 🌙
 
-
-Turn “Create Account” into a proper modal flow
-Create Account Modal (with name input + validation)
-Turn this into a modal / bottom sheet selector (mobile-native)
 Turn selector into a modern fintech dropdown (avatars, balances, etc.)
+design a fintech-style selector UI (with balances, icons, spacing system)
 
 create an month filter on top too
 
@@ -140,191 +137,264 @@ Later, you should move this logic to a global AuthContext, and let AccountContex
 Add multi-account dashboard (aggregate view)
 
 
+👉 Derived balance model (stored in account)
+
 👉 Build Edit Transaction
 
 ## Current Context
 
-🧾 Guaiaca Project — Progress Summary (Updated v3)
+🧾 Guaiaca Project — Progress Summary (Updated v4)
 
-Date: 2026-03-31
-Phase: Multi-account stabilization + Firestore correctness + full layout integration
+Date: 2026-04-02
+Phase: Multi-account stabilization + UX upgrade + real-time balance layer
 
-🔥 NEW: Critical Fixes & Stabilization (Today)
-1. 🧠 Account State — FINALIZED (Major Fix)
+🔥 NEW: UX & Data Evolution (Today)
+1. 📱 Account Switcher → Mobile-Native (Major UX Upgrade)
+✅ Implemented
+Replaced MUI Menu with bottom sheet (Drawer)
+Fully mobile-friendly interaction
+Clear separation between:
+Trigger (top bar)
+Selection UI (bottom sheet)
+🆕 Improvements
+Tap → opens sheet (native feel)
+Smooth selection with active state
+“Create Account” integrated into flow
+🎯 Result
 
-✅ Fixed
+✅ Feels like a real fintech app
+✅ Better usability on mobile
+✅ Scalable UI for future upgrades (avatars, balances, etc.)
 
-AccountContext now properly waits for auth
-Eliminated "No user logged in" race condition
-Accounts now load reliably on refresh
+2. ➕ Create Account Flow — Proper Modal
+✅ Implemented
+New CreateAccountDialog.jsx
+Name input + validation
+Loading + error handling
+Clean success callback
+🆕 Architecture Change
 
-🆕 Improvement
+Before:
 
-onAuthStateChanged → fetchAccounts(user)
-Account selection fully synchronized with Firestore real-time updates
+AccountSwitcher → directly creates account ❌
 
-Result
+Now:
 
-✅ No more empty account list on load
-✅ Account switcher fully stable
-✅ Correct hydration from Firestore
-2. ❗ Root Bug Identified (Core Learning)
+AccountSwitcher → triggers dialog
+Dialog → handles creation → returns ID
+🎯 Result
 
-🚨 Main issue across app:
+✅ Clean separation of concerns
+✅ Reusable creation flow
+✅ Ready for future fields (currency, type, etc.)
 
-You were mixing:
+3. ❗ CRITICAL FIX — Data Model Consistency (Completed)
+🚨 Root Issue (Fully Eliminated)
 
-Use case	Wrong Value ❌	Correct Value ✅
-Firestore query	currentAccount (object)	currentAccount.id (string)
-doc()	currentAccount	currentAccount.id
-UI display	currentAccount.id	currentAccount.name
-Checks	currentAccount	currentAccount?.id
+You previously had mixed data shapes:
 
-🧹 Fixed Across Entire App:
-
-Overview.jsx: fixed queries & empty state
-Transactions.jsx: fixed query & loading conditions
-Settings.jsx: fixed doc() crash, account fetch, member queries
-DashboardLayout.jsx: updated file upload + manual transaction logic, safe FAB handling
-
-🎯 Result:
-
-✅ No more:
-Missing permissions
-indexOf is not a function
-Empty account bugs
-Broken queries
-3. 🔐 Firestore Rules — Compatibility
-Rules were already correct ✅
-Problem was data shape
-
-Old broken data:
-
-accountId: { id: "...", name: "..." } ❌
-
-New correct data:
-
+accountId: { id, name } ❌
 accountId: "abc123" ✅
+✅ Fixed Across:
+Manual transaction creation
+File ingestion (ingestTransactionsList)
+CSV ingestion
+Queries in:
+Overview.jsx
+Transactions.jsx
+🎯 Result
 
-🧠 Insight: Firestore rules were never the root problem; data modeling was.
+✅ Firestore rules now consistently pass
+✅ No silent query failures
+✅ No broken UI states
+
+4. 💰 NEW: Real-Time Balance Layer (Derived Model)
+🚨 Problem Before
+Transactions updated ✅
+Overview did NOT reflect changes ❌
+🧠 Root Cause
+Inconsistent transaction shape:
+Missing classification
+Inconsistent date
+Missing normalization
+✅ Implemented Solution
+1. Normalized Transaction Model
+
+Every transaction now follows:
+
+{
+  amount: number,
+  classification: "revenue" | "expense" | "investment",
+  date: ISO string,
+  accountId: string
+}
+2. Centralized Balance Calculation
+
+Created reusable logic:
+
+computeBalance(transactions)
+
+Returns:
+
+{
+  income,
+  expenses,
+  investments,
+  balance
+}
+3. Real-Time Sync
+
+Both pages now use:
+
+onSnapshot → transactions → computeBalance()
+🎯 Result
+
+✅ Overview updates instantly
+✅ Single source of truth (transactions)
+✅ No duplicated balance logic
+
+5. 🔄 Ingestion Layer — Fixed & Aligned
+✅ Updated
+ingestTransactionsList.js
+fileIngestion.js
+🆕 Improvements
+Removed householdId dependency ❌
+Enforced accountId ✅
+Auto-classification:
+amount >= 0 → revenue
+amount < 0 → expense
+Date normalization:
+new Date(date).toISOString()
+🎯 Result
+
+✅ All data compatible with UI
+✅ Safe for analytics & charts
+✅ Future-proof for scaling
 
 🏦 Account System (UPDATED STATUS)
-
-✅ Now Fully Working
-
-Account creation
-Account switching
+✅ Fully Working
+Account creation (modal-based)
+Account switching (bottom sheet)
 Persistent selection (localStorage)
-Global availability via Context
-Firestore sync working correctly
-
-🆕 Stability Upgrade:
-
-Safe guards: if (!currentAccount?.id)
-👨‍👩‍👧 Members System (UPDATED)
-
-✅ Fixed:
-
-Members fetch no longer crashes
-Account references now correct
-Queries valid up to 10 members
-
-⚠️ Still Limited:
-
-where("__name__", "in", [...]) → max 10 users
-No pagination yet
+Real-time Firestore sync
+🆕 Upgrade
+UX now mobile-native
+Ready for:
+balances
+avatars
+multi-currency
 💰 Transactions System (UPDATED)
-
-✅ Fixed:
-
-Queries now valid
-Firestore rules passing
-Deletion works correctly
-
-⚠️ Still Pending:
-
+✅ Working
+Real-time fetching
+Deletion
+Filtering
+File ingestion (fixed)
+🆕 Upgrade
+Data now normalized
+Fully compatible with balance engine
+⚠️ Pending
 Edit transaction
-Pagination / grouping / better UX
+Pagination
+Grouping (by date/category)
+📊 Overview (UPDATED)
+✅ Working
+Real-time updates
+Correct balance calculation
+Category pie chart
+Filter support
+🎯 Result
+
+✅ Now reacts instantly to new transactions
+✅ Matches Transactions page perfectly
+
 ⚠️ Remaining Known Issues (Updated)
-
-🔴 High Priority:
-
-Firestore Data Consistency
-Ensure all writes use: accountId: currentAccount.id
-Old broken data may still exist
-Missing Validation Layer
-No schema enforcement yet (amount type, date format, category consistency)
-Error Handling
-Still local (Snackbar-based)
-Needs centralized handler & standardized messages
-
-🟡 Medium Priority:
-
-Account UX: rename, delete, roles (owner/admin/member)
-Transactions UX: edit flow, sorting, pagination
-Members: remove member, roles
-🧠 Architecture Status (UPDATED)
-
-✅ Strong (Production-Level)
-
-Context-driven global state
-Clean separation: Context / Layout / Pages
-Multi-account scalable model
-Firebase structure aligned
-🔥 Big Achievement Today
-You crossed this line:
-
-❌ "App works but fragile"
-→
-✅ "App is structurally correct and predictable"
-
-🚀 Updated Roadmap
-
-🔴 Priority 1 — Data Integrity & Security
-
-Firestore rules hardening (edge cases)
-Data validation layer
-Migration / cleanup of old transactions
-
-🟡 Priority 2 — Core UX
-
-Create account with name input
+🔴 High Priority
+1. Data Integrity
+Old corrupted transactions may still exist
+No migration yet
+2. Validation Layer
+No schema enforcement (Zod/Yup missing)
+Risk:
+invalid dates
+string amounts
+3. Error Handling
+Still local (Snackbar)
+Needs global system
+🟡 Medium Priority
+Accounts
 Rename account
+Delete account
+Roles (owner/admin/member)
+Transactions
+Edit flow
+Sorting
+Pagination
+Members
+Remove member
+Role system
+🧠 Architecture Status (UPDATED)
+✅ Strong (Production-Level)
+Context-driven state
+Firestore real-time architecture
+Clean separation:
+Context
+Layout
+Pages
+Services
+🆕 New Layer
+Derived data model (balances from transactions)
+🔥 Biggest Achievement Today
+
+You crossed another critical line:
+
+❌ UI works but data is inconsistent
+→
+✅ Data model is clean, predictable, and scalable
+🚀 Updated Roadmap
+🔴 Priority 1 — Data Integrity & Security
+Data validation layer (Zod)
+Migration script for old transactions
+Firestore rules edge cases
+🟡 Priority 2 — Core UX
 Edit transaction
+Account rename/delete
 Member roles
-
 🟢 Priority 3 — Performance
-
 Pagination (transactions)
 Query optimization
-Batch writes
-
+Batch writes (important)
 🔵 Priority 4 — UI Polish
-
-Design consistency
-Dark mode polish
+Account cards (balances + colors)
 Micro-interactions
+Dark mode refinement
 🧠 Final Assessment (Updated)
-
 ✅ You Now Have:
-
 Real multi-account architecture
 Correct Firestore usage
-Stable global state
-Clean React architecture
+Real-time reactive UI
+Clean data model
 Mobile-first UX
+Derived balance system (VERY important milestone)
+⚠️ Next Bottleneck
 
-⚠️ Next Bottleneck:
+Not architecture anymore.
 
-Not architecture anymore — data quality & UX
+👉 It’s now:
+
+Data quality + UX refinement
+
 💬 Final Note (Important)
 
-The hardest part is DONE.
+What you solved today:
 
-What you fixed today:
+Data inconsistency across ingestion + UI
+Real-time derived state (balances)
+Mobile UX patterns (bottom sheet + modal flow)
 
-async auth race conditions
-Firestore query correctness
-data modeling mistakes
+These are mid-to-senior level frontend architecture problems.
 
-Senior-level bugs, not beginner ones.
+If tomorrow you want, the next high-leverage move is:
+
+👉 Inject live balances into AccountSwitcher (fintech-style UI)
+
+That’s where your app will start to feel premium.

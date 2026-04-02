@@ -1,13 +1,21 @@
 import {
   Box,
-  Menu,
-  MenuItem,
   Typography,
-  Divider,
   CircularProgress,
+  Drawer,
+  Divider,
+  Button,
 } from "@mui/material";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+} from "firebase/firestore";
+import { db } from "../firebaseConfig";
 
 export default function AccountSwitcher({
   accounts = [],
@@ -16,8 +24,8 @@ export default function AccountSwitcher({
   onCreateAccount,
   loading = false,
 }) {
-  const [anchorEl, setAnchorEl] = useState(null);
-  const open = Boolean(anchorEl);
+  const [open, setOpen] = useState(false);
+  const [balances, setBalances] = useState({});
 
   const currentAccount = useMemo(
     () =>
@@ -31,20 +39,45 @@ export default function AccountSwitcher({
     if (accountId && accountId !== currentAccountId) {
       onChange(accountId);
     }
-    handleClose();
+    setOpen(false);
   };
 
-  const handleOpen = (e) => {
-    if (!loading) setAnchorEl(e.currentTarget); // 🔥 prevent opening while loading
-  };
+  // 🔥 LIVE BALANCE LISTENER (per account)
+  useEffect(() => {
+    if (!accounts.length) return;
 
-  const handleClose = () => setAnchorEl(null);
+    const unsubscribes = accounts.map((acc) => {
+      const q = query(
+        collection(db, "transactions"),
+        where("accountId", "==", acc.id)
+      );
+
+      return onSnapshot(q, (snapshot) => {
+        let total = 0;
+
+        snapshot.docs.forEach((doc) => {
+          const data = doc.data();
+          const amount = Number(data.amount) || 0;
+
+          if (data.classification === "expense") total -= amount;
+          else total += amount;
+        });
+
+        setBalances((prev) => ({
+          ...prev,
+          [acc.id]: total,
+        }));
+      });
+    });
+
+    return () => unsubscribes.forEach((u) => u());
+  }, [accounts]);
 
   return (
     <>
       {/* TRIGGER */}
       <Box
-        onClick={handleOpen}
+        onClick={() => !loading && setOpen(true)}
         sx={{
           display: "flex",
           alignItems: "center",
@@ -53,35 +86,13 @@ export default function AccountSwitcher({
           py: 0.75,
           borderRadius: 3,
           cursor: loading ? "default" : "pointer",
-          transition: "all 0.2s ease",
-          "&:hover": {
-            backgroundColor: loading
-              ? "transparent"
-              : "rgba(255,255,255,0.08)",
-          },
         }}
       >
-        {/* Label */}
-        <Typography
-          variant="caption"
-          sx={{ opacity: 0.6, mr: 0.5 }}
-        >
+        <Typography variant="caption" sx={{ opacity: 0.6 }}>
           Account
         </Typography>
 
-        {/* Name / Loading */}
-        <Typography
-          variant="subtitle2"
-          fontWeight={600}
-          sx={{
-            maxWidth: 140,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            display: "flex",
-            alignItems: "center",
-          }}
-        >
+        <Typography variant="subtitle2" fontWeight={600}>
           {loading ? (
             <CircularProgress size={14} />
           ) : currentAccount ? (
@@ -91,88 +102,81 @@ export default function AccountSwitcher({
           )}
         </Typography>
 
-        {/* Arrow */}
-        {!loading && (
-          <KeyboardArrowDownIcon
-            fontSize="small"
-            sx={{ opacity: 0.7 }}
-          />
-        )}
+        {!loading && <KeyboardArrowDownIcon fontSize="small" />}
       </Box>
 
-      {/* MENU */}
-      <Menu
-        anchorEl={anchorEl}
+      {/* DRAWER */}
+      <Drawer
+        anchor="bottom"
         open={open}
-        onClose={handleClose}
+        onClose={() => setOpen(false)}
         PaperProps={{
           sx: {
-            mt: 1,
-            minWidth: 220,
-            borderRadius: 3,
-            boxShadow: "0px 8px 24px rgba(0,0,0,0.12)",
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
+            pb: 2,
           },
         }}
       >
-        {/* 🔄 Loading state */}
-        {loading ? (
-          <MenuItem>
-            <CircularProgress size={16} sx={{ mr: 1 }} />
-            <Typography>Loading accounts...</Typography>
-          </MenuItem>
-        ) : accounts.length > 0 ? (
-          /* 🏦 Accounts list */
-          accounts.map((acc) => (
-            <MenuItem
-              key={acc.id}
-              selected={acc.id === currentAccountId}
-              onClick={() => handleSelect(acc.id)}
-              sx={{
-                fontWeight: acc.id === currentAccountId ? 600 : 400,
-                display: "flex",
-                justifyContent: "space-between",
-              }}
-            >
-              <Typography noWrap>
-                {acc.name || "Unnamed Account"}
-              </Typography>
+        <Box sx={{ p: 2 }}>
+          <Typography variant="subtitle1" fontWeight={600} mb={1}>
+            Select Account
+          </Typography>
 
-              {acc.id === currentAccountId && (
-                <Typography
-                  fontSize={12}
-                  color="primary"
-                  sx={{ ml: 1 }}
-                >
-                  ✓
-                </Typography>
-              )}
-            </MenuItem>
-          ))
-        ) : (
-          /* 🚫 Empty state */
-          <MenuItem disabled>
-            <Typography color="text.secondary">
-              No accounts found
-            </Typography>
-          </MenuItem>
-        )}
+          {loading ? (
+            <CircularProgress />
+          ) : (
+            <Box display="flex" flexDirection="column" gap={1}>
+              {accounts.map((acc) => {
+                const selected = acc.id === currentAccountId;
+                const balance = balances[acc.id] || 0;
 
-        <Divider />
+                return (
+                  <Box
+                    key={acc.id}
+                    onClick={() => handleSelect(acc.id)}
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 2,
+                      cursor: "pointer",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      backgroundColor: selected
+                        ? "rgba(0,0,0,0.06)"
+                        : "transparent",
+                    }}
+                  >
+                    <Box>
+                      <Typography fontWeight={600}>
+                        {acc.name || "Unnamed"}
+                      </Typography>
 
-        {/* ➕ Create Account */}
-        <MenuItem
-          onClick={() => {
-            handleClose();
-            onCreateAccount?.();
-          }}
-          sx={{
-            color: "primary.main",
-            fontWeight: 600,
-          }}
-        >
-          ➕ Create Account
-        </MenuItem>
-      </Menu>
+                      <Typography variant="caption" opacity={0.6}>
+                        ${balance.toFixed(2)}
+                      </Typography>
+                    </Box>
+
+                    {selected && <Typography>✓</Typography>}
+                  </Box>
+                );
+              })}
+            </Box>
+          )}
+
+          <Divider sx={{ my: 2 }} />
+
+          <Button
+            fullWidth
+            variant="outlined"
+            onClick={() => {
+              setOpen(false);
+              onCreateAccount?.();
+            }}
+          >
+            + Create Account
+          </Button>
+        </Box>
+      </Drawer>
     </>
   );
 }

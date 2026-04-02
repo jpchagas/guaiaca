@@ -32,22 +32,22 @@ import { signOut } from "firebase/auth";
 import { auth, db } from "../firebaseConfig";
 import {
   collection,
-  addDoc,
-  doc,
   serverTimestamp,
-  setDoc,
-  arrayUnion,
-  updateDoc,
+  runTransaction,
+  doc,
+  addDoc
 } from "firebase/firestore";
 
 import { parseFile } from "../services/parsers/parseFile";
 import { ingestTransactionsList } from "../services/ingestion/ingestTransactionsList";
 
 import AccountSwitcher from "../components/AccountSwitcher";
+import CreateAccountDialog from "../components/CreateAccountDialog";
 import { useAccount } from "../context/AccountContext";
 
 export default function DashboardLayout() {
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
+  const [createAccountOpen, setCreateAccountOpen] = useState(false);
   const [error, setError] = useState(null);
 
   const {
@@ -88,31 +88,6 @@ export default function DashboardLayout() {
     return 0;
   };
 
-  // 🏦 CREATE ACCOUNT
-  const handleCreateAccount = async () => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
-
-    try {
-      const newAccountRef = doc(collection(db, "accounts"));
-
-      await setDoc(newAccountRef, {
-        name: "New Account",
-        members: [currentUser.uid],
-        createdAt: serverTimestamp(),
-      });
-
-      await updateDoc(doc(db, "users", currentUser.uid), {
-        accounts: arrayUnion(newAccountRef.id),
-      });
-
-      // ❌ No manual setAccounts — real-time will handle it
-      switchAccount(newAccountRef.id);
-    } catch (err) {
-      console.error("Error creating account:", err);
-    }
-  };
-
   // 📂 FILE UPLOAD
   const handleFileChange = async (e) => {
     const selectedFile = e.target.files?.[0];
@@ -142,7 +117,6 @@ export default function DashboardLayout() {
     } catch (err) {
       setError(err.message || "Unexpected error");
     } finally {
-      // 🔥 allow re-upload of same file
       e.target.value = null;
     }
   };
@@ -153,35 +127,41 @@ export default function DashboardLayout() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  // ➕ MANUAL TRANSACTION
+  // ➕ MANUAL TRANSACTION (🔥 FIXED)
   const handleManualSubmit = async () => {
-    try {
-      if (!currentAccount?.id) {
-        setError("No account selected");
-        return;
-      }
-
-      await addDoc(collection(db, "transactions"), {
-        ...formData,
-        amount: parseFloat(formData.amount) || 0,
-        accountId: currentAccount.id,
-        createdAt: serverTimestamp(),
-      });
-
-      setManualDialogOpen(false);
-      setFormData({
-        description: "",
-        amount: "",
-        category: "",
-        date: "",
-      });
-    } catch (err) {
-      console.error(err);
-      setError("Error adding transaction");
+  try {
+    if (!currentAccount?.id) {
+      setError("No account selected");
+      return;
     }
-  };
 
-  // ⏳ LOADING STATE
+    const amount = parseFloat(formData.amount) || 0;
+
+    await addDoc(collection(db, "transactions"), {
+      ...formData,
+      amount,
+
+      // ✅ CRITICAL FIX
+      classification: amount >= 0 ? "revenue" : "expense",
+
+      accountId: currentAccount.id,
+      createdAt: serverTimestamp(),
+    });
+
+    setManualDialogOpen(false);
+    setFormData({
+      description: "",
+      amount: "",
+      category: "",
+      date: "",
+    });
+  } catch (err) {
+    console.error(err);
+    setError("Error adding transaction");
+  }
+};
+
+  // ⏳ LOADING
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" mt={10}>
@@ -199,7 +179,6 @@ export default function DashboardLayout() {
             {getPageTitle()}
           </Typography>
 
-          {/* Account Switcher */}
           <Box
             sx={{
               position: "absolute",
@@ -211,7 +190,7 @@ export default function DashboardLayout() {
               accounts={accounts}
               currentAccountId={currentAccount?.id}
               onChange={switchAccount}
-              onCreateAccount={handleCreateAccount}
+              onCreateAccount={() => setCreateAccountOpen(true)}
               loading={loading}
             />
           </Box>
@@ -270,7 +249,16 @@ export default function DashboardLayout() {
         <AddIcon />
       </Fab>
 
-      {/* DIALOG */}
+      {/* CREATE ACCOUNT */}
+      <CreateAccountDialog
+        open={createAccountOpen}
+        onClose={() => setCreateAccountOpen(false)}
+        onSuccess={(newAccountId) => {
+          switchAccount(newAccountId);
+        }}
+      />
+
+      {/* TRANSACTION DIALOG */}
       <Dialog
         open={manualDialogOpen}
         onClose={() => setManualDialogOpen(false)}
@@ -278,55 +266,19 @@ export default function DashboardLayout() {
       >
         <DialogTitle>Add Transaction</DialogTitle>
 
-        <DialogContent
-          sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}
-        >
-          <Button
-            variant="outlined"
-            onClick={() => fileInputRef.current.click()}
-          >
+        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}>
+          <Button variant="outlined" onClick={() => fileInputRef.current.click()}>
             Upload File
           </Button>
 
-          <input
-            type="file"
-            hidden
-            ref={fileInputRef}
-            onChange={handleFileChange}
-          />
+          <input type="file" hidden ref={fileInputRef} onChange={handleFileChange} />
 
           {error && <Alert severity="error">{error}</Alert>}
 
-          <TextField
-            label="Description"
-            name="description"
-            value={formData.description}
-            onChange={handleFormChange}
-          />
-
-          <TextField
-            label="Amount"
-            name="amount"
-            type="number"
-            value={formData.amount}
-            onChange={handleFormChange}
-          />
-
-          <TextField
-            label="Category"
-            name="category"
-            value={formData.category}
-            onChange={handleFormChange}
-          />
-
-          <TextField
-            label="Date"
-            name="date"
-            type="date"
-            InputLabelProps={{ shrink: true }}
-            value={formData.date}
-            onChange={handleFormChange}
-          />
+          <TextField label="Description" name="description" value={formData.description} onChange={handleFormChange} />
+          <TextField label="Amount" name="amount" type="number" value={formData.amount} onChange={handleFormChange} />
+          <TextField label="Category" name="category" value={formData.category} onChange={handleFormChange} />
+          <TextField label="Date" name="date" type="date" InputLabelProps={{ shrink: true }} value={formData.date} onChange={handleFormChange} />
         </DialogContent>
 
         <DialogActions sx={{ p: 2 }}>

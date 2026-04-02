@@ -80,16 +80,18 @@ export default function Transactions() {
       }
     );
 
-    // 🔥 cleanup on account change
     return () => unsubscribe();
   }, [currentAccount?.id]);
 
-  // 🔍 FILTERS
+  // 🔍 FILTERS (FIXED DATE HANDLING)
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
       if (!tx.date) return false;
 
-      const txDate = new Date(tx.date);
+      const txDate =
+        typeof tx.date?.toDate === "function"
+          ? tx.date.toDate()
+          : new Date(tx.date);
 
       if (filters?.dateFrom && txDate < new Date(filters.dateFrom))
         return false;
@@ -105,9 +107,6 @@ export default function Transactions() {
   const confirmDelete = async () => {
     try {
       await deleteDoc(doc(db, "transactions", deleteId));
-
-      // ❌ DO NOT manually update state anymore
-      // onSnapshot will handle it
 
       setSnackbar({
         open: true,
@@ -132,7 +131,6 @@ export default function Transactions() {
       ? "error.main"
       : "warning.main";
 
-  // ⏳ LOADING
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" mt={6}>
@@ -141,7 +139,6 @@ export default function Transactions() {
     );
   }
 
-  // 🚫 NO ACCOUNT
   if (!currentAccount?.id) {
     return (
       <Box textAlign="center" mt={8}>
@@ -152,7 +149,6 @@ export default function Transactions() {
     );
   }
 
-  // 📭 EMPTY
   if (filteredTransactions.length === 0) {
     return (
       <Box textAlign="center" mt={8}>
@@ -163,7 +159,6 @@ export default function Transactions() {
     );
   }
 
-  // ✅ UI
   return (
     <Box>
       <Stack spacing={2}>
@@ -228,7 +223,6 @@ export default function Transactions() {
         })}
       </Stack>
 
-      {/* Confirm delete */}
       <Dialog open={!!deleteId} onClose={() => setDeleteId(null)}>
         <DialogTitle>Delete this transaction?</DialogTitle>
         <DialogActions>
@@ -239,7 +233,6 @@ export default function Transactions() {
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={3000}
