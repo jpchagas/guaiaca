@@ -7,15 +7,9 @@ import {
   Button,
 } from "@mui/material";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 
-import {
-  collection,
-  query,
-  where,
-  onSnapshot,
-} from "firebase/firestore";
-import { db } from "../firebaseConfig";
+import { useAccount } from "../context/AccountContext";
 
 export default function AccountSwitcher({
   accounts = [],
@@ -25,7 +19,7 @@ export default function AccountSwitcher({
   loading = false,
 }) {
   const [open, setOpen] = useState(false);
-  const [balances, setBalances] = useState({});
+  const { balancesByAccountId } = useAccount();
 
   const currentAccount = useMemo(
     () =>
@@ -42,36 +36,11 @@ export default function AccountSwitcher({
     setOpen(false);
   };
 
-  // 🔥 LIVE BALANCE LISTENER (per account)
-  useEffect(() => {
-    if (!accounts.length) return;
-
-    const unsubscribes = accounts.map((acc) => {
-      const q = query(
-        collection(db, "transactions"),
-        where("accountId", "==", acc.id)
-      );
-
-      return onSnapshot(q, (snapshot) => {
-        let total = 0;
-
-        snapshot.docs.forEach((doc) => {
-          const data = doc.data();
-          const amount = Number(data.amount) || 0;
-
-          if (data.classification === "expense") total -= amount;
-          else total += amount;
-        });
-
-        setBalances((prev) => ({
-          ...prev,
-          [acc.id]: total,
-        }));
-      });
-    });
-
-    return () => unsubscribes.forEach((u) => u());
-  }, [accounts]);
+  const getColor = (value) => {
+    if (value > 0) return "success.main";
+    if (value < 0) return "error.main";
+    return "text.secondary";
+  };
 
   return (
     <>
@@ -81,28 +50,45 @@ export default function AccountSwitcher({
         sx={{
           display: "flex",
           alignItems: "center",
-          gap: 0.5,
+          gap: 1,
           px: 1.5,
           py: 0.75,
           borderRadius: 3,
           cursor: loading ? "default" : "pointer",
         }}
       >
-        <Typography variant="caption" sx={{ opacity: 0.6 }}>
-          Account
-        </Typography>
+        {loading ? (
+          <CircularProgress size={14} />
+        ) : (
+          <>
+            <Box>
+              <Typography variant="caption" sx={{ opacity: 0.6 }}>
+                Account
+              </Typography>
 
-        <Typography variant="subtitle2" fontWeight={600}>
-          {loading ? (
-            <CircularProgress size={14} />
-          ) : currentAccount ? (
-            currentAccount.name
-          ) : (
-            "No account"
-          )}
-        </Typography>
+              <Typography variant="subtitle2" fontWeight={600}>
+                {currentAccount?.name || "No account"}
+              </Typography>
+            </Box>
 
-        {!loading && <KeyboardArrowDownIcon fontSize="small" />}
+            <Typography
+              variant="subtitle2"
+              sx={{
+                fontWeight: 600,
+                color: getColor(
+                  balancesByAccountId[currentAccountId]?.balance || 0
+                ),
+              }}
+            >
+              $
+              {(
+                balancesByAccountId[currentAccountId]?.balance || 0
+              ).toFixed(2)}
+            </Typography>
+
+            <KeyboardArrowDownIcon fontSize="small" />
+          </>
+        )}
       </Box>
 
       {/* DRAWER */}
@@ -129,7 +115,8 @@ export default function AccountSwitcher({
             <Box display="flex" flexDirection="column" gap={1}>
               {accounts.map((acc) => {
                 const selected = acc.id === currentAccountId;
-                const balance = balances[acc.id] || 0;
+                const balance =
+                  balancesByAccountId[acc.id]?.balance || 0;
 
                 return (
                   <Box
@@ -141,22 +128,25 @@ export default function AccountSwitcher({
                       cursor: "pointer",
                       display: "flex",
                       justifyContent: "space-between",
+                      alignItems: "center",
                       backgroundColor: selected
                         ? "rgba(0,0,0,0.06)"
                         : "transparent",
+                      borderLeft: selected
+                        ? "3px solid #1976d2"
+                        : "3px solid transparent",
                     }}
                   >
-                    <Box>
-                      <Typography fontWeight={600}>
-                        {acc.name || "Unnamed"}
-                      </Typography>
+                    <Typography fontWeight={600}>
+                      {acc.name || "Unnamed"}
+                    </Typography>
 
-                      <Typography variant="caption" opacity={0.6}>
-                        ${balance.toFixed(2)}
-                      </Typography>
-                    </Box>
-
-                    {selected && <Typography>✓</Typography>}
+                    <Typography
+                      fontWeight={600}
+                      sx={{ color: getColor(balance) }}
+                    >
+                      ${balance.toFixed(2)}
+                    </Typography>
                   </Box>
                 );
               })}

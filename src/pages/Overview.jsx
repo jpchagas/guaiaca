@@ -1,18 +1,9 @@
-import { useEffect, useState, useMemo } from "react";
+import { useMemo } from "react";
 import {
   Box,
   Typography,
   Paper,
-  CircularProgress,
 } from "@mui/material";
-
-import { db } from "../firebaseConfig";
-import {
-  collection,
-  query,
-  where,
-  onSnapshot,
-} from "firebase/firestore";
 
 import {
   PieChart,
@@ -28,41 +19,12 @@ import { useAccount } from "../context/AccountContext";
 const COLORS = ["#2E7D32", "#66BB6A", "#FFB300", "#E0E0E0"];
 
 export default function Overview() {
-  const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(true);
-
   const { filters } = useFilters();
-  const { currentAccount } = useAccount();
-
-  useEffect(() => {
-    if (!currentAccount?.id) {
-      setTransactions([]);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-
-    const q = query(
-      collection(db, "transactions"),
-      where("accountId", "==", currentAccount.id)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-
-      setTransactions(data);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [currentAccount?.id]);
+  const { transactions, currentAccount } = useAccount();
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
+      if (tx.accountId !== currentAccount?.id) return false;
       if (!tx.date) return false;
 
       const txDate =
@@ -78,7 +40,7 @@ export default function Overview() {
 
       return true;
     });
-  }, [transactions, filters]);
+  }, [transactions, filters, currentAccount]);
 
   const { income, expenses, investments } = useMemo(() => {
     let income = 0,
@@ -97,8 +59,6 @@ export default function Overview() {
           break;
         case "investment":
           investments += amount;
-          break;
-        default:
           break;
       }
     });
@@ -125,97 +85,87 @@ export default function Overview() {
     }));
   }, [filteredTransactions]);
 
-  if (loading) {
+  if (!currentAccount?.id) {
     return (
-      <Box display="flex" justifyContent="center" mt={6}>
-        <CircularProgress />
+      <Box textAlign="center" mt={6}>
+        <Typography color="text.secondary">
+          Select or create an account to get started
+        </Typography>
       </Box>
     );
   }
 
   return (
     <Box>
-      {!currentAccount?.id && (
-        <Box textAlign="center" mt={6}>
-          <Typography color="text.secondary">
-            Select or create an account to get started
-          </Typography>
-        </Box>
-      )}
+      <Paper
+        sx={{
+          p: 3,
+          mb: 3,
+          backgroundColor: "primary.main",
+          color: "white",
+          borderRadius: 4,
+        }}
+      >
+        <Typography variant="body2" sx={{ opacity: 0.8 }}>
+          Total Balance
+        </Typography>
 
-      {currentAccount?.id && (
-        <>
+        <Typography variant="h4" fontWeight={700}>
+          ${balance.toFixed(2)}
+        </Typography>
+      </Paper>
+
+      <Box sx={{ display: "flex", gap: 2, overflowX: "auto", pb: 1 }}>
+        {[
+          { label: "Income", value: income, color: "success.main" },
+          { label: "Expenses", value: expenses, color: "error.main" },
+          {
+            label: "Investments",
+            value: investments,
+            color: "warning.main",
+          },
+        ].map((item) => (
           <Paper
-            sx={{
-              p: 3,
-              mb: 3,
-              backgroundColor: "primary.main",
-              color: "white",
-              borderRadius: 4,
-            }}
+            key={item.label}
+            sx={{ p: 2, minWidth: 140, borderRadius: 3 }}
           >
-            <Typography variant="body2" sx={{ opacity: 0.8 }}>
-              Total Balance
+            <Typography variant="body2" color="text.secondary">
+              {item.label}
             </Typography>
 
-            <Typography variant="h4" fontWeight={700}>
-              ${balance.toFixed(2)}
+            <Typography
+              variant="h6"
+              fontWeight={600}
+              sx={{ color: item.color }}
+            >
+              ${item.value.toFixed(2)}
             </Typography>
           </Paper>
+        ))}
+      </Box>
 
-          <Box sx={{ display: "flex", gap: 2, overflowX: "auto", pb: 1 }}>
-            {[
-              { label: "Income", value: income, color: "success.main" },
-              { label: "Expenses", value: expenses, color: "error.main" },
-              {
-                label: "Investments",
-                value: investments,
-                color: "warning.main",
-              },
-            ].map((item) => (
-              <Paper
-                key={item.label}
-                sx={{ p: 2, minWidth: 140, borderRadius: 3 }}
-              >
-                <Typography variant="body2" color="text.secondary">
-                  {item.label}
-                </Typography>
+      <Paper sx={{ p: 2, mt: 3 }}>
+        <Typography variant="subtitle1" mb={2}>
+          Spending by Category
+        </Typography>
 
-                <Typography
-                  variant="h6"
-                  fontWeight={600}
-                  sx={{ color: item.color }}
-                >
-                  ${item.value.toFixed(2)}
-                </Typography>
-              </Paper>
-            ))}
-          </Box>
+        <Box sx={{ height: 280 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={pieData} dataKey="value" outerRadius={90}>
+                {pieData.map((entry, index) => (
+                  <Cell
+                    key={index}
+                    fill={COLORS[index % COLORS.length]}
+                  />
+                ))}
+              </Pie>
 
-          <Paper sx={{ p: 2, mt: 3 }}>
-            <Typography variant="subtitle1" mb={2}>
-              Spending by Category
-            </Typography>
-
-            <Box sx={{ height: 280 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={pieData} dataKey="value" outerRadius={90}>
-                    {pieData.map((entry, index) => (
-                      <Cell
-                        key={index}
-                        fill={COLORS[index % COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </Box>
-          </Paper>
-        </>
-      )}
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </Box>
+      </Paper>
     </Box>
   );
 }

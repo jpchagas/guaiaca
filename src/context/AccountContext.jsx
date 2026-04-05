@@ -1,6 +1,12 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { auth, db } from "../firebaseConfig";
-import { doc, collection, query, where, onSnapshot } from "firebase/firestore";
+import {
+  doc,
+  collection,
+  query,
+  where,
+  onSnapshot,
+} from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
 const AccountContext = createContext();
@@ -8,6 +14,8 @@ const AccountContext = createContext();
 export function AccountProvider({ children }) {
   const [accounts, setAccounts] = useState([]);
   const [currentAccountId, setCurrentAccountId] = useState(null);
+  const [transactions, setTransactions] = useState([]);
+  const [balancesByAccountId, setBalancesByAccountId] = useState({});
   const [loading, setLoading] = useState(true);
 
   const currentAccount =
@@ -16,16 +24,17 @@ export function AccountProvider({ children }) {
   useEffect(() => {
     let unsubscribeUser = null;
     let unsubscribeAccounts = null;
+    let unsubscribeTransactions = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      console.log("Auth state changed:", user);
-
-      // 🔥 cleanup previous listeners
       if (unsubscribeUser) unsubscribeUser();
       if (unsubscribeAccounts) unsubscribeAccounts();
+      if (unsubscribeTransactions) unsubscribeTransactions();
 
       if (!user) {
         setAccounts([]);
+        setTransactions([]);
+        setBalancesByAccountId({});
         setCurrentAccountId(null);
         setLoading(false);
         return;
@@ -33,15 +42,12 @@ export function AccountProvider({ children }) {
 
       setLoading(true);
 
-      // 🔥 1. Listen to user doc (for accountIds)
       const userRef = doc(db, "users", user.uid);
 
       unsubscribeUser = onSnapshot(userRef, (userSnap) => {
         const accountIds = Array.isArray(userSnap.data()?.accounts)
           ? userSnap.data().accounts
           : [];
-
-        console.log("Realtime account IDs:", accountIds);
 
         if (accountIds.length === 0) {
           setAccounts([]);
@@ -50,10 +56,8 @@ export function AccountProvider({ children }) {
           return;
         }
 
-        // 🔥 cleanup previous accounts listener
         if (unsubscribeAccounts) unsubscribeAccounts();
 
-        // 🔥 2. Listen to accounts in real-time
         const q = query(
           collection(db, "accounts"),
           where("__name__", "in", accountIds)
@@ -65,11 +69,8 @@ export function AccountProvider({ children }) {
             ...doc.data(),
           }));
 
-          console.log("Realtime accounts:", accountsData);
-
           setAccounts(accountsData);
 
-          // 🔥 Maintain selected account (CRITICAL)
           setCurrentAccountId((prevId) => {
             const storedId = localStorage.getItem("currentAccountId");
 
@@ -87,6 +88,59 @@ export function AccountProvider({ children }) {
           });
 
           setLoading(false);
+
+          // 🔥 TRANSACTIONS LISTENER (SINGLE SOURCE)
+          if (unsubscribeTransactions) unsubscribeTransactions();
+
+          const txQuery = query(
+            collection(db, "transactions"),
+            where("accountId", "in", accountIds)
+          );
+
+          unsubscribeTransactions = onSnapshot(txQuery, (snapshot) => {
+            const txs = snapshot.docs.map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+            }));
+
+            setTransactions(txs);
+
+            // 🔥 COMPUTE BALANCES
+            const grouped = {};
+
+            txs.forEach((tx) => {
+              const accId = tx.accountId;
+              const amount = Number(tx.amount) || 0;
+
+              if (!grouped[accId]) {
+                grouped[accId] = {
+                  income: 0,
+                  expenses: 0,
+                  investments: 0,
+                  balance: 0,
+                };
+              }
+
+              switch (tx.classification) {
+                case "revenue":
+                  grouped[accId].income += amount;
+                  grouped[accId].balance += amount;
+                  break;
+                case "expense":
+                  grouped[accId].expenses += amount;
+                  grouped[accId].balance -= amount;
+                  break;
+                case "investment":
+                  grouped[accId].investments += amount;
+                  grouped[accId].balance -= amount;
+                  break;
+                default:
+                  break;
+              }
+            });
+
+            setBalancesByAccountId(grouped);
+          });
         });
       });
     });
@@ -95,12 +149,12 @@ export function AccountProvider({ children }) {
       unsubscribeAuth();
       if (unsubscribeUser) unsubscribeUser();
       if (unsubscribeAccounts) unsubscribeAccounts();
+      if (unsubscribeTransactions) unsubscribeTransactions();
     };
   }, []);
 
   const switchAccount = (accountId) => {
     if (!accountId) return;
-    console.log("Switching account to:", accountId);
     setCurrentAccountId(accountId);
     localStorage.setItem("currentAccountId", accountId);
   };
@@ -112,8 +166,11 @@ export function AccountProvider({ children }) {
         currentAccount,
         currentAccountId,
         switchAccount,
-        setAccounts,
         loading,
+
+        // 🔥 NEW GLOBAL DATA
+        transactions,
+        balancesByAccountId,
       }}
     >
       {children}
