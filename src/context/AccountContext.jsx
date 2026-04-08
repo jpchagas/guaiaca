@@ -8,6 +8,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
+import { useDate } from "./DateContext"; // ✅ NEW
 
 const AccountContext = createContext();
 
@@ -17,6 +18,8 @@ export function AccountProvider({ children }) {
   const [transactions, setTransactions] = useState([]);
   const [balancesByAccountId, setBalancesByAccountId] = useState({});
   const [loading, setLoading] = useState(true);
+
+  const { selectedMonth, selectedYear } = useDate(); // ✅ NEW
 
   const currentAccount =
     accounts.find((acc) => acc.id === currentAccountId) || null;
@@ -89,7 +92,7 @@ export function AccountProvider({ children }) {
 
           setLoading(false);
 
-          // 🔥 TRANSACTIONS LISTENER (SINGLE SOURCE)
+          // 🔥 TRANSACTIONS LISTENER
           if (unsubscribeTransactions) unsubscribeTransactions();
 
           const txQuery = query(
@@ -105,10 +108,25 @@ export function AccountProvider({ children }) {
 
             setTransactions(txs);
 
-            // 🔥 COMPUTE BALANCES
+            // 🔥 FILTER BY DATE (GLOBAL ENGINE)
+            const filteredTxs = txs.filter((tx) => {
+              if (!tx.date) return false;
+
+              const d =
+                typeof tx.date?.toDate === "function"
+                  ? tx.date.toDate()
+                  : new Date(tx.date);
+
+              return (
+                d.getMonth() === selectedMonth &&
+                d.getFullYear() === selectedYear
+              );
+            });
+
+            // 🔥 COMPUTE BALANCES FROM FILTERED DATA
             const grouped = {};
 
-            txs.forEach((tx) => {
+            filteredTxs.forEach((tx) => {
               const accId = tx.accountId;
               const amount = Number(tx.amount) || 0;
 
@@ -151,7 +169,7 @@ export function AccountProvider({ children }) {
       if (unsubscribeAccounts) unsubscribeAccounts();
       if (unsubscribeTransactions) unsubscribeTransactions();
     };
-  }, []);
+  }, [selectedMonth, selectedYear]); // ✅ CRITICAL
 
   const switchAccount = (accountId) => {
     if (!accountId) return;
@@ -168,7 +186,7 @@ export function AccountProvider({ children }) {
         switchAccount,
         loading,
 
-        // 🔥 NEW GLOBAL DATA
+        // 🔥 GLOBAL DATA
         transactions,
         balancesByAccountId,
       }}

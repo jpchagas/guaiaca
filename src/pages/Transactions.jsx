@@ -25,15 +25,15 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 
-import { useFilters } from "../context/FilterContext";
 import { useAccount } from "../context/AccountContext";
+import { useDate } from "../context/DateContext"; // ✅ NEW
 
 export default function Transactions() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const { filters } = useFilters();
   const { currentAccount } = useAccount();
+  const { selectedMonth, selectedYear } = useDate(); // ✅ NEW
 
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -43,7 +43,7 @@ export default function Transactions() {
 
   const [deleteId, setDeleteId] = useState(null);
 
-  // 🔥 REALTIME LISTENER
+  // 🔥 REALTIME LISTENER (ONLY ACCOUNT FILTER HERE)
   useEffect(() => {
     if (!currentAccount?.id) {
       setTransactions([]);
@@ -83,25 +83,22 @@ export default function Transactions() {
     return () => unsubscribe();
   }, [currentAccount?.id]);
 
-  // 🔍 FILTERS (FIXED DATE HANDLING)
+  // 🔥 FILTER BY DATE (MONTH + YEAR)
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
       if (!tx.date) return false;
 
-      const txDate =
+      const d =
         typeof tx.date?.toDate === "function"
           ? tx.date.toDate()
           : new Date(tx.date);
 
-      if (filters?.dateFrom && txDate < new Date(filters.dateFrom))
-        return false;
-
-      if (filters?.dateTo && txDate > new Date(filters.dateTo))
-        return false;
-
-      return true;
+      return (
+        d.getMonth() === selectedMonth &&
+        d.getFullYear() === selectedYear
+      );
     });
-  }, [transactions, filters]);
+  }, [transactions, selectedMonth, selectedYear]);
 
   // 🗑 DELETE
   const confirmDelete = async () => {
@@ -131,6 +128,7 @@ export default function Transactions() {
       ? "error.main"
       : "warning.main";
 
+  // ⏳ LOADING
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" mt={6}>
@@ -139,6 +137,7 @@ export default function Transactions() {
     );
   }
 
+  // ❌ NO ACCOUNT
   if (!currentAccount?.id) {
     return (
       <Box textAlign="center" mt={8}>
@@ -149,11 +148,12 @@ export default function Transactions() {
     );
   }
 
+  // 📭 EMPTY STATE
   if (filteredTransactions.length === 0) {
     return (
       <Box textAlign="center" mt={8}>
         <Typography color="text.secondary">
-          No transactions found
+          No transactions for this period
         </Typography>
       </Box>
     );
@@ -223,6 +223,7 @@ export default function Transactions() {
         })}
       </Stack>
 
+      {/* DELETE DIALOG */}
       <Dialog open={!!deleteId} onClose={() => setDeleteId(null)}>
         <DialogTitle>Delete this transaction?</DialogTitle>
         <DialogActions>
@@ -233,6 +234,7 @@ export default function Transactions() {
         </DialogActions>
       </Dialog>
 
+      {/* SNACKBAR */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={3000}

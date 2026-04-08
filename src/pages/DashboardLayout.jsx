@@ -33,16 +33,17 @@ import { auth, db } from "../firebaseConfig";
 import {
   collection,
   serverTimestamp,
-  runTransaction,
-  doc,
-  addDoc
+  addDoc,
 } from "firebase/firestore";
 
 import { parseFile } from "../services/parsers/parseFile";
 import { ingestTransactionsList } from "../services/ingestion/ingestTransactionsList";
 
-import AccountSwitcher from "../components/AccountSwitcher";
 import CreateAccountDialog from "../components/CreateAccountDialog";
+import ContextHeader from "../components/ContextHeader";
+import AccountSwitcher from "../components/AccountSwitcher"; // ✅
+import DateSwitcher from "../components/DateSwitcher"; // ✅
+
 import { useAccount } from "../context/AccountContext";
 
 export default function DashboardLayout() {
@@ -50,9 +51,14 @@ export default function DashboardLayout() {
   const [createAccountOpen, setCreateAccountOpen] = useState(false);
   const [error, setError] = useState(null);
 
+  // 🔥 NEW: control bottom sheets
+  const [accountDrawerOpen, setAccountDrawerOpen] = useState(false);
+  const [dateDrawerOpen, setDateDrawerOpen] = useState(false);
+
   const {
     accounts = [],
     currentAccount,
+    currentAccountId,
     switchAccount,
     loading,
   } = useAccount();
@@ -68,27 +74,23 @@ export default function DashboardLayout() {
   const location = useLocation();
   const fileInputRef = useRef(null);
 
-  // 🔐 LOGOUT
   const handleLogout = async () => {
     await signOut(auth);
     navigate("/");
   };
 
-  // 🧭 PAGE TITLE
   const getPageTitle = () => {
     if (location.pathname.includes("transactions")) return "Transactions";
     if (location.pathname.includes("settings")) return "Settings";
     return "Overview";
   };
 
-  // 📍 NAV INDEX
   const getNavIndex = () => {
     if (location.pathname.includes("transactions")) return 1;
     if (location.pathname.includes("settings")) return 2;
     return 0;
   };
 
-  // 📂 FILE UPLOAD
   const handleFileChange = async (e) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
@@ -121,47 +123,41 @@ export default function DashboardLayout() {
     }
   };
 
-  // ✍️ FORM CHANGE
   const handleFormChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  // ➕ MANUAL TRANSACTION (🔥 FIXED)
   const handleManualSubmit = async () => {
-  try {
-    if (!currentAccount?.id) {
-      setError("No account selected");
-      return;
+    try {
+      if (!currentAccount?.id) {
+        setError("No account selected");
+        return;
+      }
+
+      const amount = parseFloat(formData.amount) || 0;
+
+      await addDoc(collection(db, "transactions"), {
+        ...formData,
+        amount,
+        classification: amount >= 0 ? "revenue" : "expense",
+        accountId: currentAccount.id,
+        createdAt: serverTimestamp(),
+      });
+
+      setManualDialogOpen(false);
+      setFormData({
+        description: "",
+        amount: "",
+        category: "",
+        date: "",
+      });
+    } catch (err) {
+      console.error(err);
+      setError("Error adding transaction");
     }
+  };
 
-    const amount = parseFloat(formData.amount) || 0;
-
-    await addDoc(collection(db, "transactions"), {
-      ...formData,
-      amount,
-
-      // ✅ CRITICAL FIX
-      classification: amount >= 0 ? "revenue" : "expense",
-
-      accountId: currentAccount.id,
-      createdAt: serverTimestamp(),
-    });
-
-    setManualDialogOpen(false);
-    setFormData({
-      description: "",
-      amount: "",
-      category: "",
-      date: "",
-    });
-  } catch (err) {
-    console.error(err);
-    setError("Error adding transaction");
-  }
-};
-
-  // ⏳ LOADING
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" mt={10}>
@@ -174,55 +170,52 @@ export default function DashboardLayout() {
     <Box sx={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
       {/* TOP BAR */}
       <AppBar position="fixed">
-        <Toolbar sx={{ position: "relative" }}>
+        <Toolbar>
+          {/* LEFT */}
           <Typography variant="h6" fontWeight={600}>
             {getPageTitle()}
           </Typography>
 
-          <Box
-            sx={{
-              position: "absolute",
-              left: "50%",
-              transform: "translateX(-50%)",
-            }}
-          >
-            <AccountSwitcher
-              accounts={accounts}
-              currentAccountId={currentAccount?.id}
-              onChange={switchAccount}
-              onCreateAccount={() => setCreateAccountOpen(true)}
-              loading={loading}
+          {/* CENTER */}
+          <Box sx={{ flex: 1, display: "flex", justifyContent: "center" }}>
+            <ContextHeader
+              onOpenAccount={() => setAccountDrawerOpen(true)} // ✅ FIX
+              onOpenDate={() => setDateDrawerOpen(true)} // ✅ FIX
             />
           </Box>
 
-          <Box sx={{ marginLeft: "auto" }}>
-            <IconButton onClick={handleLogout}>
-              <Logout />
-            </IconButton>
-          </Box>
+          {/* RIGHT */}
+          <IconButton onClick={handleLogout}>
+            <Logout />
+          </IconButton>
         </Toolbar>
       </AppBar>
 
       {/* CONTENT */}
       <Box sx={{ flex: 1, mt: 8, mb: 12 }}>
-        <Container maxWidth="sm" sx={{ px: 2 }}>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <Outlet />
-          </Box>
+        <Container maxWidth="sm">
+          <Outlet />
         </Container>
       </Box>
 
-      {/* BOTTOM NAV */}
-      <Paper
-        sx={{
-          position: "fixed",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          borderTop: "1px solid rgba(0,0,0,0.06)",
-        }}
-        elevation={0}
-      >
+      {/* 🔥 DRAWERS (NOW CONNECTED) */}
+      <AccountSwitcher
+        accounts={accounts}
+        currentAccountId={currentAccountId}
+        onChange={switchAccount}
+        onCreateAccount={() => setCreateAccountOpen(true)}
+        loading={loading}
+        open={accountDrawerOpen}
+        onClose={() => setAccountDrawerOpen(false)}
+      />
+
+      <DateSwitcher
+        open={dateDrawerOpen}
+        onClose={() => setDateDrawerOpen(false)}
+      />
+
+      {/* NAV */}
+      <Paper sx={{ position: "fixed", bottom: 0, left: 0, right: 0 }}>
         <BottomNavigation
           value={getNavIndex()}
           onChange={(e, newValue) => {
@@ -232,10 +225,7 @@ export default function DashboardLayout() {
           }}
         >
           <BottomNavigationAction label="Overview" icon={<Home />} />
-          <BottomNavigationAction
-            label="Transactions"
-            icon={<AccountBalanceWallet />}
-          />
+          <BottomNavigationAction label="Transactions" icon={<AccountBalanceWallet />} />
           <BottomNavigationAction label="Settings" icon={<Settings />} />
         </BottomNavigation>
       </Paper>
@@ -249,25 +239,18 @@ export default function DashboardLayout() {
         <AddIcon />
       </Fab>
 
-      {/* CREATE ACCOUNT */}
       <CreateAccountDialog
         open={createAccountOpen}
         onClose={() => setCreateAccountOpen(false)}
-        onSuccess={(newAccountId) => {
-          switchAccount(newAccountId);
-        }}
+        onSuccess={(id) => switchAccount(id)}
       />
 
-      {/* TRANSACTION DIALOG */}
-      <Dialog
-        open={manualDialogOpen}
-        onClose={() => setManualDialogOpen(false)}
-        fullWidth
-      >
+      {/* DIALOG */}
+      <Dialog open={manualDialogOpen} onClose={() => setManualDialogOpen(false)} fullWidth>
         <DialogTitle>Add Transaction</DialogTitle>
 
-        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}>
-          <Button variant="outlined" onClick={() => fileInputRef.current.click()}>
+        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <Button onClick={() => fileInputRef.current.click()}>
             Upload File
           </Button>
 
@@ -281,11 +264,9 @@ export default function DashboardLayout() {
           <TextField label="Date" name="date" type="date" InputLabelProps={{ shrink: true }} value={formData.date} onChange={handleFormChange} />
         </DialogContent>
 
-        <DialogActions sx={{ p: 2 }}>
+        <DialogActions>
           <Button onClick={() => setManualDialogOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleManualSubmit}>
-            Add
-          </Button>
+          <Button onClick={handleManualSubmit} variant="contained">Add</Button>
         </DialogActions>
       </Dialog>
     </Box>

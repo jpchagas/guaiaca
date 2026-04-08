@@ -13,61 +13,47 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-import { useFilters } from "../context/FilterContext";
 import { useAccount } from "../context/AccountContext";
+import { useDate } from "../context/DateContext"; // ✅ NEW
 
 const COLORS = ["#2E7D32", "#66BB6A", "#FFB300", "#E0E0E0"];
 
 export default function Overview() {
-  const { filters } = useFilters();
-  const { transactions, currentAccount } = useAccount();
+  const {
+    transactions,
+    currentAccount,
+    balancesByAccountId,
+  } = useAccount();
 
+  const { selectedMonth, selectedYear } = useDate(); // ✅ NEW
+
+  const balanceData =
+    balancesByAccountId[currentAccount?.id] || {
+      income: 0,
+      expenses: 0,
+      investments: 0,
+      balance: 0,
+    };
+
+  // ✅ FILTER BY ACCOUNT + DATE
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
       if (tx.accountId !== currentAccount?.id) return false;
       if (!tx.date) return false;
 
-      const txDate =
+      const d =
         typeof tx.date?.toDate === "function"
           ? tx.date.toDate()
           : new Date(tx.date);
 
-      if (filters?.dateFrom && txDate < new Date(filters.dateFrom))
-        return false;
-
-      if (filters?.dateTo && txDate > new Date(filters.dateTo))
-        return false;
-
-      return true;
+      return (
+        d.getMonth() === selectedMonth &&
+        d.getFullYear() === selectedYear
+      );
     });
-  }, [transactions, filters, currentAccount]);
+  }, [transactions, currentAccount, selectedMonth, selectedYear]);
 
-  const { income, expenses, investments } = useMemo(() => {
-    let income = 0,
-      expenses = 0,
-      investments = 0;
-
-    filteredTransactions.forEach((t) => {
-      const amount = Number(t.amount) || 0;
-
-      switch (t.classification) {
-        case "revenue":
-          income += amount;
-          break;
-        case "expense":
-          expenses += amount;
-          break;
-        case "investment":
-          investments += amount;
-          break;
-      }
-    });
-
-    return { income, expenses, investments };
-  }, [filteredTransactions]);
-
-  const balance = income - expenses - investments;
-
+  // ✅ PIE DATA FROM FILTERED
   const pieData = useMemo(() => {
     const expenseTransactions = filteredTransactions.filter(
       (t) => t.classification === "expense"
@@ -89,7 +75,7 @@ export default function Overview() {
     return (
       <Box textAlign="center" mt={6}>
         <Typography color="text.secondary">
-          Select or create an account to get started
+          Select or create an account
         </Typography>
       </Box>
     );
@@ -111,24 +97,17 @@ export default function Overview() {
         </Typography>
 
         <Typography variant="h4" fontWeight={700}>
-          ${balance.toFixed(2)}
+          ${balanceData.balance.toFixed(2)}
         </Typography>
       </Paper>
 
       <Box sx={{ display: "flex", gap: 2, overflowX: "auto", pb: 1 }}>
         {[
-          { label: "Income", value: income, color: "success.main" },
-          { label: "Expenses", value: expenses, color: "error.main" },
-          {
-            label: "Investments",
-            value: investments,
-            color: "warning.main",
-          },
+          { label: "Income", value: balanceData.income, color: "success.main" },
+          { label: "Expenses", value: balanceData.expenses, color: "error.main" },
+          { label: "Investments", value: balanceData.investments, color: "warning.main" },
         ].map((item) => (
-          <Paper
-            key={item.label}
-            sx={{ p: 2, minWidth: 140, borderRadius: 3 }}
-          >
+          <Paper key={item.label} sx={{ p: 2, minWidth: 140, borderRadius: 3 }}>
             <Typography variant="body2" color="text.secondary">
               {item.label}
             </Typography>
@@ -154,13 +133,9 @@ export default function Overview() {
             <PieChart>
               <Pie data={pieData} dataKey="value" outerRadius={90}>
                 {pieData.map((entry, index) => (
-                  <Cell
-                    key={index}
-                    fill={COLORS[index % COLORS.length]}
-                  />
+                  <Cell key={index} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
-
               <Tooltip />
             </PieChart>
           </ResponsiveContainer>
