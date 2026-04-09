@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Box,
   Typography,
@@ -14,7 +14,14 @@ import {
 } from "recharts";
 
 import { useAccount } from "../context/AccountContext";
-import { useDate } from "../context/DateContext"; // ✅ NEW
+import { useDate } from "../context/DateContext";
+
+import AccountMembersBar from "../components/AccountMembersBar";
+import ShareAccountDialog from "../components/ShareAccountDialog";
+import ConfirmActionDialog from "../components/ConfirmActionDialog";
+
+import { auth, db } from "../firebaseConfig";
+import { doc, updateDoc, arrayRemove } from "firebase/firestore";
 
 const COLORS = ["#2E7D32", "#66BB6A", "#FFB300", "#E0E0E0"];
 
@@ -23,9 +30,22 @@ export default function Overview() {
     transactions,
     currentAccount,
     balancesByAccountId,
+    account,
+    members,
   } = useAccount();
 
-  const { selectedMonth, selectedYear } = useDate(); // ✅ NEW
+  const { selectedMonth, selectedYear } = useDate();
+  const currentUserId = auth.currentUser?.uid;
+
+  const [shareOpen, setShareOpen] = useState(false);
+
+  // 🔥 CONFIRM DIALOG STATE
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [selectedMemberId, setSelectedMemberId] = useState(null);
+  const [confirmConfig, setConfirmConfig] = useState({
+    title: "",
+    description: "",
+  });
 
   const balanceData =
     balancesByAccountId[currentAccount?.id] || {
@@ -35,7 +55,51 @@ export default function Overview() {
       balance: 0,
     };
 
-  // ✅ FILTER BY ACCOUNT + DATE
+  // 🔥 OPEN CONFIRM
+  const handleRemoveMember = (memberId) => {
+    if (!account?.id || !memberId) return;
+
+    const isOwner = currentUserId === account.ownerId;
+    const isSelf = memberId === currentUserId;
+
+    if (isOwner && isSelf) {
+      alert("Owner cannot leave the account");
+      return;
+    }
+
+    setSelectedMemberId(memberId);
+
+    setConfirmConfig({
+      title: isSelf ? "Leave Account" : "Remove Member",
+      description: isSelf
+        ? "Are you sure you want to leave this account?"
+        : "Are you sure you want to remove this member?",
+    });
+
+    setConfirmOpen(true);
+  };
+
+  // 🔥 CONFIRM ACTION
+  const confirmRemoveMember = async () => {
+    if (!selectedMemberId || !account?.id) return;
+
+    try {
+      await updateDoc(doc(db, "accounts", account.id), {
+        members: arrayRemove(selectedMemberId),
+      });
+
+      await updateDoc(doc(db, "users", selectedMemberId), {
+        accounts: arrayRemove(account.id),
+      });
+
+      setConfirmOpen(false);
+      setSelectedMemberId(null);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // ✅ FILTER
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
       if (tx.accountId !== currentAccount?.id) return false;
@@ -53,7 +117,7 @@ export default function Overview() {
     });
   }, [transactions, currentAccount, selectedMonth, selectedYear]);
 
-  // ✅ PIE DATA FROM FILTERED
+  // ✅ PIE
   const pieData = useMemo(() => {
     const expenseTransactions = filteredTransactions.filter(
       (t) => t.classification === "expense"
@@ -83,6 +147,24 @@ export default function Overview() {
 
   return (
     <Box>
+
+      {/* 👥 MEMBERS */}
+      <AccountMembersBar
+        members={members}
+        account={account}
+        currentUserId={currentUserId}
+        onAddClick={() => setShareOpen(true)}
+        onRemoveMember={handleRemoveMember}
+      />
+
+      {/* ➕ SHARE */}
+      <ShareAccountDialog
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        accountId={currentAccount.id}
+      />
+
+      {/* 💰 BALANCE */}
       <Paper
         sx={{
           p: 3,
@@ -101,6 +183,7 @@ export default function Overview() {
         </Typography>
       </Paper>
 
+      {/* 📊 SUMMARY */}
       <Box sx={{ display: "flex", gap: 2, overflowX: "auto", pb: 1 }}>
         {[
           { label: "Income", value: balanceData.income, color: "success.main" },
@@ -123,6 +206,7 @@ export default function Overview() {
         ))}
       </Box>
 
+      {/* 🥧 CHART */}
       <Paper sx={{ p: 2, mt: 3 }}>
         <Typography variant="subtitle1" mb={2}>
           Spending by Category
@@ -141,6 +225,17 @@ export default function Overview() {
           </ResponsiveContainer>
         </Box>
       </Paper>
+
+      {/* 🔥 CONFIRM DIALOG */}
+      <ConfirmActionDialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={confirmRemoveMember}
+        title={confirmConfig.title}
+        description={confirmConfig.description}
+        confirmText="Confirm"
+        cancelText="Cancel"
+      />
     </Box>
   );
 }

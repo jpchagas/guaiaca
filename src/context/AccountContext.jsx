@@ -8,37 +8,46 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
-import { useDate } from "./DateContext"; // ✅ NEW
+import { useDate } from "./DateContext";
 
 const AccountContext = createContext();
 
 export function AccountProvider({ children }) {
   const [accounts, setAccounts] = useState([]);
   const [currentAccountId, setCurrentAccountId] = useState(null);
+
+  const [account, setAccount] = useState(null); // ✅ NEW
+  const [members, setMembers] = useState([]);   // ✅ NEW
+
   const [transactions, setTransactions] = useState([]);
   const [balancesByAccountId, setBalancesByAccountId] = useState({});
   const [loading, setLoading] = useState(true);
 
-  const { selectedMonth, selectedYear } = useDate(); // ✅ NEW
+  const { selectedMonth, selectedYear } = useDate();
 
   const currentAccount =
     accounts.find((acc) => acc.id === currentAccountId) || null;
 
+  // 🔥 AUTH + DATA
   useEffect(() => {
     let unsubscribeUser = null;
     let unsubscribeAccounts = null;
     let unsubscribeTransactions = null;
+    let unsubscribeMembers = null; // ✅ NEW
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (unsubscribeUser) unsubscribeUser();
       if (unsubscribeAccounts) unsubscribeAccounts();
       if (unsubscribeTransactions) unsubscribeTransactions();
+      if (unsubscribeMembers) unsubscribeMembers();
 
       if (!user) {
         setAccounts([]);
         setTransactions([]);
         setBalancesByAccountId({});
         setCurrentAccountId(null);
+        setAccount(null);
+        setMembers([]);
         setLoading(false);
         return;
       }
@@ -55,6 +64,8 @@ export function AccountProvider({ children }) {
         if (accountIds.length === 0) {
           setAccounts([]);
           setCurrentAccountId(null);
+          setAccount(null);
+          setMembers([]);
           setLoading(false);
           return;
         }
@@ -92,7 +103,36 @@ export function AccountProvider({ children }) {
 
           setLoading(false);
 
-          // 🔥 TRANSACTIONS LISTENER
+          // 🔥 CURRENT ACCOUNT OBJECT
+          const selected =
+            accountsData.find((acc) => acc.id === currentAccountId) ||
+            accountsData[0];
+
+          setAccount(selected || null);
+
+          // 🔥 MEMBERS LISTENER (NEW)
+          if (unsubscribeMembers) unsubscribeMembers();
+
+          const memberIds = selected?.members || [];
+
+          if (!memberIds.length) {
+            setMembers([]);
+          } else {
+            const usersQuery = query(
+              collection(db, "users"),
+              where("__name__", "in", memberIds.slice(0, 10))
+            );
+
+            unsubscribeMembers = onSnapshot(usersQuery, (snap) => {
+              const users = snap.docs.map((d) => ({
+                id: d.id,
+                ...d.data(),
+              }));
+              setMembers(users);
+            });
+          }
+
+          // 🔥 TRANSACTIONS LISTENER (UNCHANGED)
           if (unsubscribeTransactions) unsubscribeTransactions();
 
           const txQuery = query(
@@ -108,7 +148,6 @@ export function AccountProvider({ children }) {
 
             setTransactions(txs);
 
-            // 🔥 FILTER BY DATE (GLOBAL ENGINE)
             const filteredTxs = txs.filter((tx) => {
               if (!tx.date) return false;
 
@@ -123,7 +162,6 @@ export function AccountProvider({ children }) {
               );
             });
 
-            // 🔥 COMPUTE BALANCES FROM FILTERED DATA
             const grouped = {};
 
             filteredTxs.forEach((tx) => {
@@ -168,8 +206,9 @@ export function AccountProvider({ children }) {
       if (unsubscribeUser) unsubscribeUser();
       if (unsubscribeAccounts) unsubscribeAccounts();
       if (unsubscribeTransactions) unsubscribeTransactions();
+      if (unsubscribeMembers) unsubscribeMembers();
     };
-  }, [selectedMonth, selectedYear]); // ✅ CRITICAL
+  }, [selectedMonth, selectedYear]);
 
   const switchAccount = (accountId) => {
     if (!accountId) return;
@@ -185,6 +224,10 @@ export function AccountProvider({ children }) {
         currentAccountId,
         switchAccount,
         loading,
+
+        // ✅ NEW
+        account,
+        members,
 
         // 🔥 GLOBAL DATA
         transactions,

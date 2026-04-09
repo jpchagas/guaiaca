@@ -76,6 +76,10 @@ firebase deploy --only hosting
 - Create month filter
 - Add limit of accounts creation
 - Add Type list creation
+- Account that i'm should be owner look like i'm not a owner
+
+Add role system (owner / editor / viewer)
+If you want, the next step is to update AccountMembersBar to include a Leave / Remove button for each member and use a reusable ConfirmActionDialog instead of window.confirm.
 
 Turn selector into a modern fintech dropdown (avatars, balances, etc.)
 design a fintech-style selector UI (with balances, icons, spacing system)
