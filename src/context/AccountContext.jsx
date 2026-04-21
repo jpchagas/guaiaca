@@ -1,7 +1,6 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useMemo } from "react";
 import { auth, db } from "../firebaseConfig";
 import {
-  doc,
   collection,
   query,
   where,
@@ -16,8 +15,7 @@ export function AccountProvider({ children }) {
   const [accounts, setAccounts] = useState([]);
   const [currentAccountId, setCurrentAccountId] = useState(null);
 
-  const [account, setAccount] = useState(null); // ✅ NEW
-  const [members, setMembers] = useState([]);   // ✅ NEW
+  const [members, setMembers] = useState([]);
 
   const [transactions, setTransactions] = useState([]);
   const [balancesByAccountId, setBalancesByAccountId] = useState({});
@@ -25,18 +23,17 @@ export function AccountProvider({ children }) {
 
   const { selectedMonth, selectedYear } = useDate();
 
-  const currentAccount =
-    accounts.find((acc) => acc.id === currentAccountId) || null;
+  // ✅ DERIVED (THIS FIXES HALF YOUR BUGS)
+  const currentAccount = useMemo(() => {
+    return accounts.find((acc) => acc.id === currentAccountId) || null;
+  }, [accounts, currentAccountId]);
 
-  // 🔥 AUTH + DATA
   useEffect(() => {
-    let unsubscribeUser = null;
     let unsubscribeAccounts = null;
     let unsubscribeTransactions = null;
-    let unsubscribeMembers = null; // ✅ NEW
+    let unsubscribeMembers = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      if (unsubscribeUser) unsubscribeUser();
       if (unsubscribeAccounts) unsubscribeAccounts();
       if (unsubscribeTransactions) unsubscribeTransactions();
       if (unsubscribeMembers) unsubscribeMembers();
@@ -46,7 +43,6 @@ export function AccountProvider({ children }) {
         setTransactions([]);
         setBalancesByAccountId({});
         setCurrentAccountId(null);
-        setAccount(null);
         setMembers([]);
         setLoading(false);
         return;
@@ -54,161 +50,149 @@ export function AccountProvider({ children }) {
 
       setLoading(true);
 
-      const userRef = doc(db, "users", user.uid);
+      // 🔥 LOAD ACCOUNTS BY MEMBERSHIP
+      const accountsQuery = query(
+        collection(db, "accounts"),
+        where("members", "array-contains", user.uid)
+      );
 
-      unsubscribeUser = onSnapshot(userRef, (userSnap) => {
-        const accountIds = Array.isArray(userSnap.data()?.accounts)
-          ? userSnap.data().accounts
-          : [];
+      unsubscribeAccounts = onSnapshot(accountsQuery, (snapshot) => {
+        const accountsData = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
 
-        if (accountIds.length === 0) {
-          setAccounts([]);
-          setCurrentAccountId(null);
-          setAccount(null);
+        setAccounts(accountsData);
+
+        // ✅ SAFE SELECTION LOGIC
+        setCurrentAccountId((prev) => {
+          const stored = localStorage.getItem("currentAccountId");
+
+          const valid =
+            accountsData.find((a) => a.id === prev)?.id ||
+            accountsData.find((a) => a.id === stored)?.id ||
+            accountsData[0]?.id ||
+            null;
+
+          if (valid) {
+            localStorage.setItem("currentAccountId", valid);
+          }
+
+          return valid;
+        });
+
+        // 🔥 MEMBERS LISTENER
+        if (unsubscribeMembers) unsubscribeMembers();
+
+        const selected =
+          accountsData.find((a) => a.id === currentAccountId) ||
+          accountsData[0];
+
+        const memberIds = selected?.members || [];
+
+        if (!memberIds.length) {
           setMembers([]);
+        } else {
+          const usersQuery = query(
+            collection(db, "users"),
+            where("__name__", "in", memberIds.slice(0, 10))
+          );
+
+          unsubscribeMembers = onSnapshot(usersQuery, (snap) => {
+            const users = snap.docs.map((d) => ({
+              id: d.id,
+              ...d.data(),
+            }));
+            setMembers(users);
+          });
+        }
+
+        // 🔥 TRANSACTIONS LISTENER
+        if (unsubscribeTransactions) unsubscribeTransactions();
+
+        const accountIds = accountsData.map((acc) => acc.id);
+
+        if (!accountIds.length) {
+          setTransactions([]);
+          setBalancesByAccountId({});
           setLoading(false);
           return;
         }
 
-        if (unsubscribeAccounts) unsubscribeAccounts();
-
-        const q = query(
-          collection(db, "accounts"),
-          where("__name__", "in", accountIds)
+        const txQuery = query(
+          collection(db, "transactions"),
+          where("accountId", "in", accountIds.slice(0, 10))
         );
 
-        unsubscribeAccounts = onSnapshot(q, (snapshot) => {
-          const accountsData = snapshot.docs.map((doc) => ({
+        unsubscribeTransactions = onSnapshot(txQuery, (snapshot) => {
+          const txs = snapshot.docs.map((doc) => ({
             id: doc.id,
             ...doc.data(),
           }));
 
-          setAccounts(accountsData);
+          setTransactions(txs);
 
-          setCurrentAccountId((prevId) => {
-            const storedId = localStorage.getItem("currentAccountId");
+          const filteredTxs = txs.filter((tx) => {
+            if (!tx.date) return false;
 
-            const validId =
-              accountsData.find((acc) => acc.id === prevId)?.id ||
-              accountsData.find((acc) => acc.id === storedId)?.id ||
-              accountsData[0]?.id ||
-              null;
+            const d =
+              typeof tx.date?.toDate === "function"
+                ? tx.date.toDate()
+                : new Date(tx.date);
 
-            if (validId) {
-              localStorage.setItem("currentAccountId", validId);
+            return (
+              d.getMonth() === selectedMonth &&
+              d.getFullYear() === selectedYear
+            );
+          });
+
+          const grouped = {};
+
+          filteredTxs.forEach((tx) => {
+            const accId = tx.accountId;
+            const amount = Number(tx.amount) || 0;
+
+            if (!grouped[accId]) {
+              grouped[accId] = {
+                income: 0,
+                expenses: 0,
+                investments: 0,
+                balance: 0,
+              };
             }
 
-            return validId;
+            switch (tx.classification) {
+              case "revenue":
+                grouped[accId].income += amount;
+                grouped[accId].balance += amount;
+                break;
+              case "expense":
+                grouped[accId].expenses += amount;
+                grouped[accId].balance -= amount;
+                break;
+              case "investment":
+                grouped[accId].investments += amount;
+                grouped[accId].balance -= amount;
+                break;
+              default:
+                break;
+            }
           });
 
-          setLoading(false);
-
-          // 🔥 CURRENT ACCOUNT OBJECT
-          const selected =
-            accountsData.find((acc) => acc.id === currentAccountId) ||
-            accountsData[0];
-
-          setAccount(selected || null);
-
-          // 🔥 MEMBERS LISTENER (NEW)
-          if (unsubscribeMembers) unsubscribeMembers();
-
-          const memberIds = selected?.members || [];
-
-          if (!memberIds.length) {
-            setMembers([]);
-          } else {
-            const usersQuery = query(
-              collection(db, "users"),
-              where("__name__", "in", memberIds.slice(0, 10))
-            );
-
-            unsubscribeMembers = onSnapshot(usersQuery, (snap) => {
-              const users = snap.docs.map((d) => ({
-                id: d.id,
-                ...d.data(),
-              }));
-              setMembers(users);
-            });
-          }
-
-          // 🔥 TRANSACTIONS LISTENER (UNCHANGED)
-          if (unsubscribeTransactions) unsubscribeTransactions();
-
-          const txQuery = query(
-            collection(db, "transactions"),
-            where("accountId", "in", accountIds)
-          );
-
-          unsubscribeTransactions = onSnapshot(txQuery, (snapshot) => {
-            const txs = snapshot.docs.map((doc) => ({
-              id: doc.id,
-              ...doc.data(),
-            }));
-
-            setTransactions(txs);
-
-            const filteredTxs = txs.filter((tx) => {
-              if (!tx.date) return false;
-
-              const d =
-                typeof tx.date?.toDate === "function"
-                  ? tx.date.toDate()
-                  : new Date(tx.date);
-
-              return (
-                d.getMonth() === selectedMonth &&
-                d.getFullYear() === selectedYear
-              );
-            });
-
-            const grouped = {};
-
-            filteredTxs.forEach((tx) => {
-              const accId = tx.accountId;
-              const amount = Number(tx.amount) || 0;
-
-              if (!grouped[accId]) {
-                grouped[accId] = {
-                  income: 0,
-                  expenses: 0,
-                  investments: 0,
-                  balance: 0,
-                };
-              }
-
-              switch (tx.classification) {
-                case "revenue":
-                  grouped[accId].income += amount;
-                  grouped[accId].balance += amount;
-                  break;
-                case "expense":
-                  grouped[accId].expenses += amount;
-                  grouped[accId].balance -= amount;
-                  break;
-                case "investment":
-                  grouped[accId].investments += amount;
-                  grouped[accId].balance -= amount;
-                  break;
-                default:
-                  break;
-              }
-            });
-
-            setBalancesByAccountId(grouped);
-          });
+          setBalancesByAccountId(grouped);
         });
+
+        setLoading(false);
       });
     });
 
     return () => {
       unsubscribeAuth();
-      if (unsubscribeUser) unsubscribeUser();
       if (unsubscribeAccounts) unsubscribeAccounts();
       if (unsubscribeTransactions) unsubscribeTransactions();
       if (unsubscribeMembers) unsubscribeMembers();
     };
-  }, [selectedMonth, selectedYear]);
+  }, [selectedMonth, selectedYear, currentAccountId]);
 
   const switchAccount = (accountId) => {
     if (!accountId) return;
@@ -220,16 +204,11 @@ export function AccountProvider({ children }) {
     <AccountContext.Provider
       value={{
         accounts,
-        currentAccount,
+        currentAccount,      // ✅ CRITICAL FIX
         currentAccountId,
         switchAccount,
         loading,
-
-        // ✅ NEW
-        account,
         members,
-
-        // 🔥 GLOBAL DATA
         transactions,
         balancesByAccountId,
       }}

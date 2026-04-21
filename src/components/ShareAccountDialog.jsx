@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -19,39 +19,22 @@ import {
   doc,
   updateDoc,
   arrayUnion,
-  getDoc,
 } from "firebase/firestore";
 
+import { useAccount } from "../context/AccountContext"; // ✅ NEW
+
 export default function ShareAccountDialog({ open, onClose, accountId }) {
+  const { account } = useAccount(); // ✅ SOURCE OF TRUTH
+
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [isOwner, setIsOwner] = useState(false);
+  const [loading, setLoading] = useState(false); // ✅ NEW
 
-  // ✅ Check if current user is owner
-  useEffect(() => {
-    if (!accountId) return;
+  const currentUserId = auth.currentUser?.uid;
 
-    const checkOwner = async () => {
-      try {
-        const accountSnap = await getDoc(doc(db, "accounts", accountId));
-        if (!accountSnap.exists()) {
-          setError("Account not found");
-          return;
-        }
-
-        const accountData = accountSnap.data();
-        const currentUserId = auth.currentUser?.uid;
-
-        setIsOwner(accountData.ownerId === currentUserId);
-      } catch (err) {
-        console.error(err);
-        setError("Error fetching account info");
-      }
-    };
-
-    checkOwner();
-  }, [accountId]);
+  // ✅ DERIVED (no state, no effect)
+  const isOwner = account?.ownerId === currentUserId;
 
   const handleShare = async () => {
     setError("");
@@ -64,29 +47,36 @@ export default function ShareAccountDialog({ open, onClose, accountId }) {
       return;
     }
 
+    setLoading(true);
+
     try {
+      const trimmedEmail = email.trim().toLowerCase();
+
       const q = query(
         collection(db, "users"),
-        where("email", "==", email.trim())
+        where("email", "==", trimmedEmail)
       );
 
       const snap = await getDocs(q);
 
       if (snap.empty) {
         setError("User not found");
+        setLoading(false);
         return;
       }
 
       const userId = snap.docs[0].id;
 
+      // ⚠️ Optional guard (nice UX improvement)
+      if (userId === currentUserId) {
+        setError("You already have access to this account.");
+        setLoading(false);
+        return;
+      }
+
       // 🔥 Add member to account
       await updateDoc(doc(db, "accounts", accountId), {
         members: arrayUnion(userId),
-      });
-
-      // 🔥 Add account to user's list
-      await updateDoc(doc(db, "users", userId), {
-        accounts: arrayUnion(accountId),
       });
 
       setSuccess("User added!");
@@ -94,6 +84,8 @@ export default function ShareAccountDialog({ open, onClose, accountId }) {
     } catch (err) {
       console.error(err);
       setError("Error sharing account");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -102,7 +94,11 @@ export default function ShareAccountDialog({ open, onClose, accountId }) {
       <DialogTitle>Share Account</DialogTitle>
 
       <DialogContent>
-        {!isOwner ? (
+        {!account ? (
+          <Typography color="text.secondary">
+            Loading account...
+          </Typography>
+        ) : !isOwner ? (
           <Typography color="text.secondary">
             Only the owner can share this account.
           </Typography>
@@ -113,18 +109,35 @@ export default function ShareAccountDialog({ open, onClose, accountId }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             margin="normal"
+            disabled={loading}
           />
         )}
 
-        {error && <Alert severity="error" sx={{ mt: 1 }}>{error}</Alert>}
-        {success && <Alert severity="success" sx={{ mt: 1 }}>{success}</Alert>}
+        {error && (
+          <Alert severity="error" sx={{ mt: 1 }}>
+            {error}
+          </Alert>
+        )}
+
+        {success && (
+          <Alert severity="success" sx={{ mt: 1 }}>
+            {success}
+          </Alert>
+        )}
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose} disabled={loading}>
+          Cancel
+        </Button>
+
         {isOwner && (
-          <Button variant="contained" onClick={handleShare}>
-            Share
+          <Button
+            variant="contained"
+            onClick={handleShare}
+            disabled={loading || !email}
+          >
+            {loading ? "Sharing..." : "Share"}
           </Button>
         )}
       </DialogActions>

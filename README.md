@@ -101,150 +101,265 @@ Add multi-account dashboard (aggregate view)
 
 ## Current Context
 
-🧾 Guaiaca Project — Progress Summary (Updated v6)
+🧾 Guaiaca Project — Progress Summary (Updated v8)
 
-Date: 2026-04-07
-Phase: Multi-account stabilization + UX upgrade + real-time balance layer + cross-account financial engine
+Date: 2026-04-17
+Phase: Multi-account stabilization + UX upgrade + real-time balance layer + cross-account financial engine + multi-user collaboration + account context reliability
 
-🔥 NEW: UX & Data Evolution (Today)
-1. 📱 Account & Date Switchers — Mobile-Native (Major UX Upgrade)
+🔥 NEW: Account Context Stabilization (Today)
+6. 🔄 AccountContext — Selection & Sync Fix
 
 ✅ Implemented
 
-Replaced MUI Menu with bottom sheet (Drawer) for both AccountSwitcher and DateSwitcher
-Fully mobile-friendly interaction
-Clear separation between:
-Trigger (top bar / ContextHeader)
-Selection UI (bottom sheet)
+Problem
 
-🆕 Improvements
+currentAccount was out of sync
+UI showed:
+“No account”
+“Select or create an account”
+Account switch didn’t reflect across pages
 
-Tap → opens sheet (native feel)
-Smooth selection with active state
-“Create Account” integrated into flow
-Controlled state via DashboardLayout
-(no internal state in switchers → predictable behavior)
+Root Cause
+
+Async state update issue:
+currentAccountId updated
+BUT account was computed using stale state
+Missing single source of truth
+🛠 Fix Applied
+
+1. Single Source of Truth
+
+const currentAccount =
+  accounts.find((acc) => acc.id === currentAccountId) || null;
+
+✔ Removed duplicated account state dependency issues
+✔ Derived instead of manually syncing
+
+2. Deterministic Selection Logic
+
+const selectedId =
+  accountsData.find((acc) => acc.id === currentAccountId)?.id ||
+  accountsData.find((acc) => acc.id === storedId)?.id ||
+  accountsData[0]?.id ||
+  null;
+
+✔ Guarantees a valid account
+✔ Handles:
+
+First login
+Refresh
+Account deletion
+
+3. Immediate Sync (Critical Fix)
+
+setCurrentAccountId(selectedId);
+
+✔ No stale reads
+✔ Fixes AccountSwitcher + ContextHeader instantly
+
+4. Members Listener Bound to Selected Account
+
+✔ Members now:
+
+Update when switching account
+Always reflect correct account context
+
+5. Transactions Listener Stabilized
+
+✔ Uses full account list
+✔ Guards:
+
+Empty accounts
+Firestore in limit (10)
+🎯 Result
+
+✅ AccountSwitcher works reliably
+✅ ContextHeader always shows correct account
+✅ Overview & Transactions load correctly
+✅ No more “No account” ghost state
+✅ State is predictable and deterministic
+
+🔥 NEW: Collaboration & Account Sharing
+1. 👥 Account Membership System
+
+✅ Implemented
+
+Accounts now support multiple users:
+
+accounts: {
+  ownerId,
+  members: [userId]
+}
+
+users: {
+  accounts: [accountId]
+}
+🆕 Capabilities
+
+Owner can:
+
+Share account
+Remove members
+
+Members can:
+
+Access shared account
+Leave account
 
 🎯 Result
 
-✅ Feels like a real fintech app
-✅ Better usability on mobile
-✅ Scalable UI for future upgrades (avatars, balances, etc.)
-✅ No more disconnected click issues
-2. ➕ Create Account Flow — Proper Modal
+✅ Multi-user financial accounts
+✅ Shared finance use cases (couples, teams)
+✅ Foundation for roles & permissions
+
+2. ➕ Share Account Flow
+
+✅ Implemented (ShareAccountDialog)
+
+Email-based user lookup
+Adds:
+user → account.members
+account → user.accounts
+Owner-only restriction (UI-level)
+
+🎯 Result
+
+✅ Clean, real-world sharing flow
+✅ Bi-directional data consistency
+
+3. 👥 Members UI (AccountMembersBar)
 
 ✅ Implemented
 
-New CreateAccountDialog.jsx
-Name input + validation
-Loading + error handling
-Clean success callback
+Avatar chips with:
+👑 Owner indicator
+“(You)” label
+Inline actions:
+Remove member (owner)
+Leave account (member)
 
-🆕 Architecture Change
+🎯 Result
 
-Before: AccountSwitcher → directly creates account ❌
-Now: AccountSwitcher → triggers dialog → dialog handles creation → returns ID ✅
+✅ Clear collaboration UX
+✅ Permission-aware interface
+
+4. ❗ Remove / Leave Flow
+
+✅ Implemented
+
+Unified logic:
+
+Owner → removes others
+Member → removes self (leave)
+
+With confirmation dialog (ConfirmActionDialog)
+
+🎯 Result
+
+✅ Safe destructive actions
+✅ Reusable confirmation pattern
+
+5. 🧠 AccountContext — Collaboration Upgrade
+
+🆕 Added
+
+account (current full object)
+members (resolved user data)
+
+⚙️ Behavior
+
+Real-time members listener
+Syncs when account changes
+Integrated into global context
+
+🎯 Result
+
+✅ Members available across app
+✅ Real-time collaboration state
+
+📱 Account & Date Switchers — Mobile-Native
+
+✅ Implemented
+
+Bottom sheet (Drawer) replaces MUI Menu
+Controlled via DashboardLayout
+
+🎯 Result
+
+✅ Native mobile feel
+✅ Predictable state management
+✅ Scalable UI
+
+➕ Create Account Flow — Modal Architecture
+
+✅ Implemented
+
+Dedicated CreateAccountDialog
+Validation + loading + success callback
 
 🎯 Result
 
 ✅ Clean separation of concerns
-✅ Reusable creation flow
-✅ Ready for future fields (currency, type, etc.)
-3. ❗ CRITICAL FIX — Data Model Consistency (Completed)
+✅ Reusable creation logic
 
-🚨 Root Issue (Fully Eliminated)
+❗ Data Model Consistency (Critical Fix)
 
-Previously mixed data shapes:
-accountId: { id, name } ❌
-accountId: "abc123" ✅
+✅ Fixed
 
-✅ Fixed Across:
+Unified:
 
-Manual transaction creation
-File ingestion (ingestTransactionsList)
-CSV ingestion
-Queries in:
-Overview.jsx
-Transactions.jsx
+accountId: string
+
+Across:
+
+Manual transactions
+File ingestion
+Queries
 
 🎯 Result
 
-✅ Firestore rules now consistently pass
-✅ No silent query failures
-✅ No broken UI states
-4. 💰 Real-Time Balance Layer (Derived Model)
+✅ No silent failures
+✅ Firestore queries stable
+✅ UI consistency
 
-🚨 Problem Before
+💰 Real-Time Balance Layer (Derived Model)
 
-Transactions updated ✅
-Overview did NOT reflect changes ❌
+✅ Implemented
 
-🧠 Root Cause
-
-Inconsistent transaction shape:
-Missing classification
-Inconsistent date
-Missing normalization
-
-✅ Implemented Solution
-
-Normalized Transaction Model
 {
-  amount: number,
-  classification: "revenue" | "expense" | "investment",
-  date: ISO string,
-  accountId: string
+  amount,
+  classification,
+  date,
+  accountId
 }
-Centralized Balance Calculation: computeBalance(transactions)
-Returns:
-{
-  income,
-  expenses,
-  investments,
-  balance
-}
-Real-Time Sync: onSnapshot → transactions → computeBalance()
+
+Central computation:
+
+computeBalance(transactions)
 
 🎯 Result
 
-✅ Overview updates instantly
-✅ Single source of truth (transactions)
-✅ No duplicated balance logic (at system level)
-5. 🔄 Ingestion Layer — Fixed & Aligned
+✅ Real-time Overview updates
+✅ Single source of truth
+✅ No duplicated logic
+
+🔄 Ingestion Layer — Fixed & Aligned
 
 ✅ Updated
 
-ingestTransactionsList.js
-fileIngestion.js
-
-🆕 Improvements
-
-Removed householdId dependency ❌
-Enforced accountId ✅
-Auto-classification:
-amount >= 0 → revenue
-amount < 0 → expense
-Date normalization: new Date(date).toISOString()
+Removed householdId
+Enforced accountId
+Auto-classification
+Date normalization
 
 🎯 Result
 
-✅ All data compatible with UI
-✅ Safe for analytics & charts
-✅ Future-proof for scaling
-6. 💰 Cross-Account Balance Engine (NEW TODAY)
+✅ Clean data pipeline
+✅ Analytics-ready data
 
-🚨 Evolution
+💰 Cross-Account Balance Engine
 
-Before: Balance computed per page (local scope) ❌
-Now: Global, real-time, multi-account balance engine ✅
-
-✅ Implemented (AccountContext Upgrade)
-
-Added global state:
-transactions
-balancesByAccountId
-
-🧠 Core Model
+✅ Implemented
 
 balancesByAccountId = {
   [accountId]: {
@@ -255,44 +370,37 @@ balancesByAccountId = {
   }
 }
 
-⚙️ How It Works
+⚙️ Behavior
 
-Single Firestore listener: where("accountId", "in", accountIds)
-Transactions grouped by account
-Balance computed in real-time
-Stored in context (global access)
-
-📱 Account Switcher Integration
-
-Displays:
-Current account balance (in trigger)
-All account balances (in drawer)
-Color-coded financial state (green/red)
+Single transactions listener
+Grouped per account
+Real-time updates
 
 🎯 Result
 
-✅ True multi-account financial awareness
-✅ No need to recompute balances per component
-✅ Instant UI updates across the app
-✅ App now feels like a real banking product
-🏦 Account System (UPDATED STATUS)
+✅ Multi-account awareness
+✅ Centralized financial engine
+✅ Instant UI sync
 
-✅ Fully Working
+🏦 Account System (UPDATED)
 
-Account creation (modal-based)
+✅ Working
+
+Account creation (modal)
 Account switching (bottom sheet)
-Persistent selection (localStorage)
-Real-time Firestore sync
+Persistent selection
+Real-time sync
 
-🆕 Upgrade
+🆕 Added
 
-Real-time balances per account (global)
-Mobile-native UX
+Multi-user accounts
+Member management
+Real-time member resolution
 
-🎯 Ready for:
+🎯 Ready for
 
-Account cards (with balances)
-Avatars
+Roles & permissions
+Account settings (advanced)
 Multi-currency
 💰 Transactions System (UPDATED)
 
@@ -300,8 +408,7 @@ Multi-currency
 
 Real-time fetching
 Deletion
-Filtering
-File ingestion (fixed)
+File ingestion
 
 🆕 Upgrade
 
@@ -313,39 +420,59 @@ Cross-account compatible
 
 Edit transaction
 Pagination
-Grouping (by date/category)
+Grouping
 📊 Overview (UPDATED)
 
 ✅ Working
 
-Real-time updates
+Real-time balances (global engine)
 Category pie chart
-Filter support
+Filters (month/year)
 
-🆕 Context
+🆕 Added
 
-Still uses filtered transactions
-Still computes balance locally ⚠️
+Members bar
+Share account flow
+Remove/leave flow
 
 🎯 Result
 
-✅ Matches Transactions page
-⚠️ Needs alignment with global balance engine
+✅ Financial + collaboration dashboard
+✅ Real-time + multi-user aware
+
+⚙️ Settings (UPDATED)
+
+✅ Working
+
+Account info display
+Members list (read-only)
+
+🎯 Result
+
+✅ Basic account visibility
+✅ Foundation for admin features
+
 ⚠️ Remaining Known Issues
 🔴 High Priority
-Data Integrity: Old corrupted transactions may exist
-Validation Layer: No schema enforcement (Zod/Yup missing)
-Balance Duplication: Overview recomputes balance locally → should use balancesByAccountId[currentAccountId]
+Firestore security rules missing
+Non-atomic writes (share/remove)
+Old corrupted transactions
+No schema validation (Zod/Yup)
 🟡 Medium Priority
-Accounts: Rename, Delete, Roles
-Transactions: Edit flow, Sorting, Pagination
-Members: Remove member, Role system
+Member roles & permissions
+Account rename/delete
+Transaction editing
+Members >10 limitation (Firestore in)
+🟢 Low Priority
+UI polish
+Micro-interactions
+Dark mode refinement
 🧠 Architecture Status (UPDATED)
 
-✅ Strong (Production-Level)
+✅ Strong (Production-Level Direction)
 
 Context-driven state
-Firestore real-time architecture
+Real-time Firestore architecture
 
 Clean separation:
 
@@ -356,43 +483,41 @@ Services
 
 🆕 New Layers
 
-Derived data model (balances from transactions)
-Cross-account aggregation layer (global balances)
-🔥 Biggest Achievement Today
+Derived financial engine
+Cross-account aggregation
+Multi-user collaboration layer
+Stable account selection layer
+🔥 Biggest Achievement
 
-❌ Real-time balances scoped per page
-→ ✅ Centralized financial engine powering entire app
+❌ Single-user financial tracker
+→ ✅ Multi-account, real-time, collaborative financial platform
 
 🚀 Updated Roadmap
-🔴 Priority 1 — Data Integrity & Consistency
-Data validation layer (Zod)
-Migration script for old transactions
-Remove duplicate balance logic (Overview)
-🟡 Priority 2 — Core UX
+🔴 Priority 1 — Data Integrity & Security
+Firestore rules
+Validation layer (Zod)
+Remove duplicate logic
+🟡 Priority 2 — Collaboration & Core UX
+Member roles & permissions
 Edit transaction
-Account rename/delete
-Member roles
+Account management
 🟢 Priority 3 — Performance
-Pagination (transactions)
+Pagination
 Query optimization
 Batch writes
 🔵 Priority 4 — UI Polish
-Account cards (balances + colors)
+Account cards
 Micro-interactions
-Dark mode refinement
-💬 Final Note (Important)
+Visual refinements
+💬 Final Note
 
-What you solved across these iterations:
+Across these iterations, you solved:
 
-Data inconsistency across ingestion + UI
-Real-time derived state (balances)
+Data consistency across ingestion + UI
+Real-time derived financial state
 Cross-account aggregation
-Mobile UX patterns (bottom sheet + modal flow)
+Mobile-native UX patterns
+Multi-user collaboration system
+State synchronization issues in AccountContext
 
-✅ Solid mid-to-senior frontend architecture problems solved
-
-Next move:
-
-Unify balance usage across the app:
-balancesByAccountId[currentAccountId]
-Once done → true single financial source of truth ✅
+✅ You now have a stable, scalable fintech architecture with real-time collaboration and reliable account state

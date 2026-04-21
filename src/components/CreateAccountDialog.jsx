@@ -59,13 +59,10 @@ export default function CreateAccountDialog({
 
       await setDoc(newAccountRef, {
         name: name.trim(),
-        color: randomColor, // 🎨 NEW
+        type: "shared",
         members: [currentUser.uid],
+        ownerId: currentUser.uid,   // ✅ 🔥 THIS IS THE FIX
         createdAt: serverTimestamp(),
-      });
-
-      await updateDoc(doc(db, "users", currentUser.uid), {
-        accounts: arrayUnion(newAccountRef.id),
       });
 
       onSuccess?.(newAccountRef.id);

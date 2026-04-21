@@ -46,16 +46,14 @@ export default function Signup() {
         name: `${name}'s Account`,
         type: "personal",
         members: [user.uid],
+        ownerId: user.uid,
         createdAt: serverTimestamp(),
       });
 
-      // 🔥 2. Create user and link account
       await setDoc(doc(db, "users", user.uid), {
         name,
-        email,
+        email: email.trim().toLowerCase(),
         createdAt: serverTimestamp(),
-        householdId: null, // ⚠️ keep temporarily for migration
-        accounts: [accountRef.id], // ✅ NEW SYSTEM
       });
 
       navigate("/dashboard");
