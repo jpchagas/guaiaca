@@ -151,7 +151,7 @@ export default function Overview() {
       {/* 👥 MEMBERS */}
       <AccountMembersBar
         members={members}
-        account={account}
+        account={currentAccount}
         currentUserId={currentUserId}
         onAddClick={() => setShareOpen(true)}
         onRemoveMember={handleRemoveMember}
@@ -161,7 +161,7 @@ export default function Overview() {
       <ShareAccountDialog
         open={shareOpen}
         onClose={() => setShareOpen(false)}
-        accountId={currentAccount.id}
+        accountId={currentAccount}
       />
 
       {/* 💰 BALANCE */}

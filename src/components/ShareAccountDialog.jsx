@@ -23,8 +23,8 @@ import {
 
 import { useAccount } from "../context/AccountContext"; // ✅ NEW
 
-export default function ShareAccountDialog({ open, onClose, accountId }) {
-  const { account } = useAccount(); // ✅ SOURCE OF TRUTH
+export default function ShareAccountDialog({ open, onClose, account }) {
+  
 
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
