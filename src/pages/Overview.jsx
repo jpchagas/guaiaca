@@ -30,7 +30,6 @@ export default function Overview() {
     transactions,
     currentAccount,
     balancesByAccountId,
-    account,
     members,
   } = useAccount();
 
@@ -47,6 +46,9 @@ export default function Overview() {
     description: "",
   });
 
+  // ✅ DEBUG
+  console.log("Overview currentAccount:", currentAccount);
+
   const balanceData =
     balancesByAccountId[currentAccount?.id] || {
       income: 0,
@@ -57,9 +59,9 @@ export default function Overview() {
 
   // 🔥 OPEN CONFIRM
   const handleRemoveMember = (memberId) => {
-    if (!account?.id || !memberId) return;
+    if (!currentAccount?.id || !memberId) return;
 
-    const isOwner = currentUserId === account.ownerId;
+    const isOwner = currentUserId === currentAccount.ownerId;
     const isSelf = memberId === currentUserId;
 
     if (isOwner && isSelf) {
@@ -81,15 +83,15 @@ export default function Overview() {
 
   // 🔥 CONFIRM ACTION
   const confirmRemoveMember = async () => {
-    if (!selectedMemberId || !account?.id) return;
+    if (!selectedMemberId || !currentAccount?.id) return;
 
     try {
-      await updateDoc(doc(db, "accounts", account.id), {
+      await updateDoc(doc(db, "accounts", currentAccount.id), {
         members: arrayRemove(selectedMemberId),
       });
 
       await updateDoc(doc(db, "users", selectedMemberId), {
-        accounts: arrayRemove(account.id),
+        accounts: arrayRemove(currentAccount.id),
       });
 
       setConfirmOpen(false);
@@ -161,7 +163,7 @@ export default function Overview() {
       <ShareAccountDialog
         open={shareOpen}
         onClose={() => setShareOpen(false)}
-        accountId={currentAccount}
+        account={currentAccount} // ✅ FIXED
       />
 
       {/* 💰 BALANCE */}

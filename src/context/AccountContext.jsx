@@ -23,7 +23,7 @@ export function AccountProvider({ children }) {
 
   const { selectedMonth, selectedYear } = useDate();
 
-  // ✅ DERIVED (THIS FIXES HALF YOUR BUGS)
+  // ✅ SINGLE SOURCE OF TRUTH
   const currentAccount = useMemo(() => {
     return accounts.find((acc) => acc.id === currentAccountId) || null;
   }, [accounts, currentAccountId]);
@@ -50,7 +50,6 @@ export function AccountProvider({ children }) {
 
       setLoading(true);
 
-      // 🔥 LOAD ACCOUNTS BY MEMBERSHIP
       const accountsQuery = query(
         collection(db, "accounts"),
         where("members", "array-contains", user.uid)
@@ -64,29 +63,27 @@ export function AccountProvider({ children }) {
 
         setAccounts(accountsData);
 
-        // ✅ SAFE SELECTION LOGIC
-        setCurrentAccountId((prev) => {
-          const stored = localStorage.getItem("currentAccountId");
+        // ✅ RESOLVE ACCOUNT ID SAFELY
+        const stored = localStorage.getItem("currentAccountId");
 
-          const valid =
-            accountsData.find((a) => a.id === prev)?.id ||
-            accountsData.find((a) => a.id === stored)?.id ||
-            accountsData[0]?.id ||
-            null;
+        const resolvedAccountId =
+          accountsData.find((a) => a.id === currentAccountId)?.id ||
+          accountsData.find((a) => a.id === stored)?.id ||
+          accountsData[0]?.id ||
+          null;
 
-          if (valid) {
-            localStorage.setItem("currentAccountId", valid);
-          }
+        if (resolvedAccountId) {
+          localStorage.setItem("currentAccountId", resolvedAccountId);
+        }
 
-          return valid;
-        });
+        setCurrentAccountId(resolvedAccountId);
 
-        // 🔥 MEMBERS LISTENER
+        // 🔥 MEMBERS LISTENER (FIXED)
         if (unsubscribeMembers) unsubscribeMembers();
 
-        const selected =
-          accountsData.find((a) => a.id === currentAccountId) ||
-          accountsData[0];
+        const selected = accountsData.find(
+          (a) => a.id === resolvedAccountId
+        );
 
         const memberIds = selected?.members || [];
 
@@ -204,7 +201,7 @@ export function AccountProvider({ children }) {
     <AccountContext.Provider
       value={{
         accounts,
-        currentAccount,      // ✅ CRITICAL FIX
+        currentAccount, // ✅ ONLY SOURCE FOR UI
         currentAccountId,
         switchAccount,
         loading,

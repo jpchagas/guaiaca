@@ -21,27 +21,35 @@ import {
   arrayUnion,
 } from "firebase/firestore";
 
-import { useAccount } from "../context/AccountContext"; // ✅ NEW
-
 export default function ShareAccountDialog({ open, onClose, account }) {
-  
-
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [loading, setLoading] = useState(false); // ✅ NEW
+  const [loading, setLoading] = useState(false);
 
   const currentUserId = auth.currentUser?.uid;
 
-  // ✅ DERIVED (no state, no effect)
+  // ✅ DEBUG
+  console.log("ShareDialog account:", account);
+
+  // ✅ DERIVED
   const isOwner = account?.ownerId === currentUserId;
+  const isSharedAccount = account?.type === "shared";
 
   const handleShare = async () => {
     setError("");
     setSuccess("");
 
-    if (!email || !accountId) return;
+    // ✅ BASIC GUARD
+    if (!email || !account?.id) return;
 
+    // 🔒 TYPE PROTECTION
+    if (!isSharedAccount) {
+      setError("This account cannot be shared.");
+      return;
+    }
+
+    // 🔒 OWNER PROTECTION
     if (!isOwner) {
       setError("Only the owner can share this account.");
       return;
@@ -67,15 +75,22 @@ export default function ShareAccountDialog({ open, onClose, account }) {
 
       const userId = snap.docs[0].id;
 
-      // ⚠️ Optional guard (nice UX improvement)
+      // Optional UX guard
       if (userId === currentUserId) {
         setError("You already have access to this account.");
         setLoading(false);
         return;
       }
 
-      // 🔥 Add member to account
-      await updateDoc(doc(db, "accounts", accountId), {
+      // Optional: prevent duplicate add (extra safety)
+      if (account.members?.includes(userId)) {
+        setError("User already has access.");
+        setLoading(false);
+        return;
+      }
+
+      // ✅ FIRESTORE UPDATE
+      await updateDoc(doc(db, "accounts", account.id), {
         members: arrayUnion(userId),
       });
 
@@ -94,9 +109,13 @@ export default function ShareAccountDialog({ open, onClose, account }) {
       <DialogTitle>Share Account</DialogTitle>
 
       <DialogContent>
-        {!account ? (
+        {!account?.id ? (
           <Typography color="text.secondary">
             Loading account...
+          </Typography>
+        ) : !isSharedAccount ? (
+          <Typography color="text.secondary">
+            This is a personal account and cannot be shared.
           </Typography>
         ) : !isOwner ? (
           <Typography color="text.secondary">
@@ -131,11 +150,11 @@ export default function ShareAccountDialog({ open, onClose, account }) {
           Cancel
         </Button>
 
-        {isOwner && (
+        {isOwner && isSharedAccount && (
           <Button
             variant="contained"
             onClick={handleShare}
-            disabled={loading || !email}
+            disabled={loading || !email || !account?.id}
           >
             {loading ? "Sharing..." : "Share"}
           </Button>

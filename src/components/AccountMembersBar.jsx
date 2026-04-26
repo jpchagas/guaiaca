@@ -5,11 +5,14 @@ export default function AccountMembersBar({
   account,
   currentUserId,
   onAddClick,
-  onRemoveMember, // ✅ NEW
+  onRemoveMember,
 }) {
   if (!account) return null;
 
   const isOwner = currentUserId === account.ownerId;
+
+  // ✅ NEW: control sharing visibility
+  const canShare = account.type === "shared" && isOwner;
 
   const getInitial = (name, email) =>
     (name || email || "?")[0].toUpperCase();
@@ -39,26 +42,25 @@ export default function AccountMembersBar({
 
               // 🔥 DELETE / LEAVE LOGIC
               onDelete={
-                // OWNER → can remove others
                 isOwner && !memberIsOwner
                   ? () => onRemoveMember(m.id)
-
-                  // NON-OWNER → can leave (remove themselves)
                   : !isOwner && isCurrentUser
                   ? () => onRemoveMember(m.id)
-
                   : undefined
               }
             />
           );
         })}
 
-        <Chip
-          label="+"
-          size="small"
-          onClick={onAddClick}
-          sx={{ cursor: "pointer" }}
-        />
+        {/* ✅ SHOW "+" ONLY FOR SHARED ACCOUNTS + OWNER */}
+        {canShare && (
+          <Chip
+            label="+"
+            size="small"
+            onClick={onAddClick}
+            sx={{ cursor: "pointer" }}
+          />
+        )}
 
       </Stack>
     </Box>
