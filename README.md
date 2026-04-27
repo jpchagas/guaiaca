@@ -88,14 +88,19 @@ Add multi-account dashboard (aggregate view)
 
 👉 Build Edit Transaction
 
+- Zod Validation
+- Build category system (chips + presets)
+- Implement edit transaction (this will reuse the same dialog)
+- Enable user to inform the parcel not only total parcels and if the parcel was the 1 split into months
+
 ## Current Context
 
-🧾 Guaiaca Project — Full Context Snapshot (v9)
+🧾 Guaiaca Project — Full Context Snapshot (v10)
 
 Last Updated: 2026-04-26
 Type: React + Firebase (Firestore)
 Domain: Personal & Shared Finance Management
-Architecture Level: Early production-ready (solid foundation, some security gaps)
+Architecture Level: Early production-ready (solid foundation, evolving data model)
 
 🧠 Core Concept
 
@@ -108,33 +113,33 @@ shared (multiple users)
 Financial data is:
 real-time
 account-scoped
-aggregated dynamically
+dynamically aggregated
 🏗️ Architecture Overview
 Frontend
 React (functional components)
-Context API for global state
+Context API (global state)
 MUI (Material UI)
 Recharts (charts)
 Backend
 Firebase Auth
-Firestore (real-time DB)
+Firestore (real-time database)
 🔑 Core Architectural Principles
 1. Single Source of Truth
-currentAccount is the only account reference used in UI
-No duplicated state (account was removed)
+currentAccount drives all UI
+No duplicated account state
 2. Derived State (Not Stored)
-Balances are computed from transactions
-No redundant financial fields stored
+Balances computed from transactions
+No redundant financial fields
 3. Real-Time First
-Firestore onSnapshot drives UI updates
-No manual refresh needed
+Firestore onSnapshot drives UI
+No manual refresh
 4. Context-Driven State
 
 Global state handled via:
 
 AccountContext
 DateContext
-📦 Data Model
+📦 Data Model (Updated)
 🏦 Accounts
 {
   id: string,
@@ -151,15 +156,35 @@ DateContext
   name?: string,
   accounts: string[]
 }
-💰 Transactions
+💰 Transactions (Expanded)
 {
   id: string,
   accountId: string,
+
   amount: number,
   classification: "revenue" | "expense" | "investment",
+
+  description: string,
+  date: timestamp,
+
   category?: string,
-  date: timestamp
+
+  method?: "pix" | "credit_card" | "transfer" | "cash",
+
+  responsibleUserId?: string,
+
+  installment?: {
+    current: number,
+    total: number
+  },
+
+  createdAt: timestamp
 }
+🧠 Notes
+classification is now user-defined (not inferred)
+amount is always positive
+financial direction comes from classification
+installments stored as metadata (not split transactions)
 🔄 AccountContext (Critical Layer)
 Responsibilities
 Load user accounts
@@ -185,12 +210,12 @@ Current state
 localStorage
 First available account
 Members Listener
-Subscribes to selected account members
-Fetches user documents (users collection)
-Limited to 10 users (Firestore in constraint)
+Subscribes to account members
+Fetches from /users
+⚠️ Limited to 10 users (Firestore in constraint)
 Transactions Listener
-Single listener across all accounts
-Filters by:
+Real-time listener
+Filtered by:
 accountId
 selected month/year
 Balance Engine
@@ -202,6 +227,12 @@ balancesByAccountId = {
     balance
   }
 }
+
+Rules:
+
+revenue → +balance
+expense → -balance
+investment → -balance
 👥 Collaboration System
 Capabilities
 Owner can:
@@ -212,10 +243,10 @@ Access shared account
 Leave account
 Share Flow
 Enter email
-Query /users by email
-Add user to:
+Query /users
+Add to:
 account.members
-(optionally) user.accounts
+user.accounts
 Restrictions
 Only owner can share
 Only shared accounts can be shared
@@ -224,7 +255,7 @@ yourself
 existing members
 Members UI
 Avatar chips
-👑 owner badge
+👑 Owner badge
 "(You)" indicator
 Inline actions:
 remove (owner)
@@ -237,24 +268,36 @@ const canShare = isOwner && isShared;
 Transactions
 Stored per account
 Real-time updates
-Used as single source of truth
+Single source of truth
 Balance Calculation
 
-Derived from transactions:
+Derived from transactions only
 
-revenue → +balance
-expense → -balance
-investment → -balance
 Filters
 Month
 Year
-
 (from DateContext)
-
+💳 Installments (New)
+Current Approach
+Stored as metadata:
+installment: {
+  current: number,
+  total: number
+}
+Behavior
+Only available for credit_card method
+Created via UI toggle
+Does not generate multiple transactions
+Limitation
+No future projection yet
+No monthly distribution
+Purely informational for now
 📱 UI Structure
 Layout
 DashboardLayout
-Controls drawers (account/date switchers)
+Navigation
+Drawers (account/date)
+FAB (add transaction)
 Main Screens
 Overview
 Balance card
@@ -269,41 +312,57 @@ Delete functionality
 Settings
 Account info
 Members (read-only)
-🧩 Key Components
+🧩 Key Components (Updated)
 AccountMembersBar
 ShareAccountDialog
 ConfirmActionDialog
 CreateAccountDialog
+✅ AddTransactionDialog (NEW)
+🆕 AddTransactionDialog
+Responsibilities
+Isolated transaction form logic
+Handles:
+classification
+category
+method
+responsible user
+installments
+Benefits
+Decoupled from layout
+Reusable (future: edit transaction)
+Ready for validation layer
 🔐 Firestore Rules (Current State)
 Users
 allow read: if request.auth != null;
 
 ⚠️ Allows email lookup (needed for sharing)
-⚠️ Not fully secure (acceptable for now)
+⚠️ Not fully secure
 
 Accounts
-Read: only members
+Read: members only
 Update:
 owner → full control
-member → can remove self only
+member → remove self only
 Transactions
 Access controlled via account membership
 ⚠️ Known Limitations
 🔴 High Priority
 Firestore rules NOT enforcing:
-account type (personal vs shared)
+account type
 No atomic writes (share/remove)
-No schema validation (Zod/Yup)
+No schema validation (Zod)
 Members query limit (10 users)
 🟡 Medium Priority
 Roles (admin/editor/viewer)
 Account rename/delete
 Transaction editing
+Installment system (full implementation)
 🟢 Low Priority
 UI polish
 Animations
 Dark mode improvements
 🚀 Current Strengths
+
 ✅ Real-time architecture
 ✅ Clean data model
 ✅ Multi-account support
@@ -311,28 +370,39 @@ Dark mode improvements
 ✅ Derived financial engine
 ✅ Stable AccountContext
 ✅ Permission-aware UI
+✅ Modular form architecture (NEW)
+
 🔥 Biggest Achievements
 Solved async state desync (critical React issue)
 Built cross-account financial engine
 Implemented multi-user accounts
 Unified data model (accountId)
 Eliminated duplicated state bugs
+Introduced structured transaction model
+Decoupled form logic from layout
 📍 Current Development Stage
 
 👉 Early production-ready
 
-Strong foundation, but needs:
+Now transitioning from:
 
-backend enforcement (rules)
-validation layer
-performance improvements
-🧭 Immediate Next Steps (Recommended)
-1. Security (most important)
-Enforce account type in Firestore rules
+feature building → system hardening
+🧭 Immediate Next Steps (Updated)
+1. Security (most critical)
+Enforce Firestore rules (ownership, type)
 Add validation layer (Zod)
-2. Collaboration
+2. Data Integrity
+Fix legacy transactions (wrong classification)
+Normalize categories & methods
+3. Collaboration
 Roles & permissions
-Member limit workaround (>10)
-3. UX
-Edit transactions
+Member scaling (>10 users)
+4. Financial Features
+Transaction editing
+Installment evolution:
+projection OR
+transaction splitting
+5. UX
 Account settings
+Better category selection
+Faster transaction input

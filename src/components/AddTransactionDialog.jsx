@@ -8,6 +8,8 @@ Button,
 TextField,
 MenuItem,
 Alert,
+FormControlLabel,
+Switch,
 } from "@mui/material";
 
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
@@ -30,11 +32,21 @@ date: "",
 classification: "expense",
 method: "pix",
 responsibleUserId: currentUserId || "",
+installmentsEnabled: false,
+installments: 1,
 });
 
 const handleChange = (e) => {
 const { name, value } = e.target;
 setFormData((prev) => ({ ...prev, [name]: value }));
+};
+
+const handleToggleInstallments = (e) => {
+setFormData((prev) => ({
+...prev,
+installmentsEnabled: e.target.checked,
+installments: e.target.checked ? 2 : 1,
+}));
 };
 
 const resetForm = () => {
@@ -46,6 +58,8 @@ date: "",
 classification: "expense",
 method: "pix",
 responsibleUserId: currentUserId || "",
+installmentsEnabled: false,
+installments: 1,
 });
 setError(null);
 };
@@ -60,7 +74,7 @@ return;
 
   const amount = Math.abs(parseFloat(formData.amount) || 0);
 
-  await addDoc(collection(db, "transactions"), {
+  const transactionData = {
     description: formData.description,
     amount,
     category: formData.category,
@@ -70,7 +84,17 @@ return;
     responsibleUserId: formData.responsibleUserId,
     accountId: currentAccount.id,
     createdAt: serverTimestamp(),
-  });
+  };
+
+  // ✅ Add installment object if enabled
+  if (formData.installmentsEnabled && formData.installments > 1) {
+    transactionData.installment = {
+      current: 1,
+      total: Number(formData.installments),
+    };
+  }
+
+  await addDoc(collection(db, "transactions"), transactionData);
 
   resetForm();
   onClose();
@@ -81,6 +105,9 @@ return;
 
 
 };
+
+const showInstallments =
+formData.method === "credit_card";
 
 return ( <Dialog open={open} onClose={onClose} fullWidth> <DialogTitle>Add Transaction</DialogTitle>
 
@@ -157,6 +184,32 @@ return ( <Dialog open={open} onClose={onClose} fullWidth> <DialogTitle>Add Trans
         </MenuItem>
       ))}
     </TextField>
+
+    {/* 💳 INSTALLMENTS */}
+    {showInstallments && (
+      <>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={formData.installmentsEnabled}
+              onChange={handleToggleInstallments}
+            />
+          }
+          label="Pay in installments"
+        />
+
+        {formData.installmentsEnabled && (
+          <TextField
+            label="Number of installments"
+            name="installments"
+            type="number"
+            inputProps={{ min: 2, max: 48 }}
+            value={formData.installments}
+            onChange={handleChange}
+          />
+        )}
+      </>
+    )}
   </DialogContent>
 
   <DialogActions>
