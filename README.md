@@ -73,27 +73,16 @@ firebase deploy --only hosting
 (R\$ [0-9]+\,[0-9]+) (\D+) (\([0-9]\/[0-9]+\) )?([0-9]+ \w+)
  ## Features
 
-- Create month filter
 - Add limit of accounts creation
-- Add Type list creation
-- Account that i'm should be owner look like i'm not a owner
 
 Add role system (owner / editor / viewer)
 If you want, the next step is to update AccountMembersBar to include a Leave / Remove button for each member and use a reusable ConfirmActionDialog instead of window.confirm.
-
-Turn selector into a modern fintech dropdown (avatars, balances, etc.)
-design a fintech-style selector UI (with balances, icons, spacing system)
-
-create an month filter on top too
-
-the share account should be something like xepa app
 
 instead settings should be budget
 
 Later, you should move this logic to a global AuthContext, and let AccountContext depend on it.
 
 Add multi-account dashboard (aggregate view)
-
 
 👉 Derived balance model (stored in account)
 
