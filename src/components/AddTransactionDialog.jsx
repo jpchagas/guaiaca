@@ -1,225 +1,278 @@
 import { useState } from "react";
 import {
-Dialog,
-DialogTitle,
-DialogContent,
-DialogActions,
-Button,
-TextField,
-MenuItem,
-Alert,
-FormControlLabel,
-Switch,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField,
+  MenuItem,
+  Alert,
+  FormControlLabel,
+  Switch,
 } from "@mui/material";
 
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 
 export default function AddTransactionDialog({
-open,
-onClose,
-currentAccount,
-members = [],
-currentUserId,
+  open,
+  onClose,
+  currentAccount,
+  members = [],
+  currentUserId,
 }) {
-const [error, setError] = useState(null);
+  const [error, setError] = useState(null);
 
-const [formData, setFormData] = useState({
-description: "",
-amount: "",
-category: "",
-date: "",
-classification: "expense",
-method: "pix",
-responsibleUserId: currentUserId || "",
-installmentsEnabled: false,
-installments: 1,
-});
+  const [formData, setFormData] = useState({
+    description: "",
+    amount: "",
+    category: "",
+    date: "",
+    classification: "expense",
+    method: "pix",
+    responsibleUserId: currentUserId || "",
+    installmentsEnabled: false,
+    installmentsTotal: "2",
+    installmentsCurrent: "1",
+  });
 
-const handleChange = (e) => {
-const { name, value } = e.target;
-setFormData((prev) => ({ ...prev, [name]: value }));
-};
+  const handleChange = (e) => {
+    const { name, value } = e.target;
 
-const handleToggleInstallments = (e) => {
-setFormData((prev) => ({
-...prev,
-installmentsEnabled: e.target.checked,
-installments: e.target.checked ? 2 : 1,
-}));
-};
+    setFormData((prev) => {
+      if (name === "installmentsTotal") {
+        if (value === "") {
+          return { ...prev, installmentsTotal: value };
+        }
 
-const resetForm = () => {
-setFormData({
-description: "",
-amount: "",
-category: "",
-date: "",
-classification: "expense",
-method: "pix",
-responsibleUserId: currentUserId || "",
-installmentsEnabled: false,
-installments: 1,
-});
-setError(null);
-};
+        const total = Number(value);
+        const current = Number(prev.installmentsCurrent);
 
-const handleSubmit = async () => {
-try {
-if (!currentAccount?.id) {
-setError("No account selected");
-return;
-}
+        return {
+          ...prev,
+          installmentsTotal: value,
+          installmentsCurrent:
+            current > total ? String(total) : prev.installmentsCurrent,
+        };
+      }
 
-
-  const amount = Math.abs(parseFloat(formData.amount) || 0);
-
-  const transactionData = {
-    description: formData.description,
-    amount,
-    category: formData.category,
-    date: formData.date,
-    classification: formData.classification,
-    method: formData.method,
-    responsibleUserId: formData.responsibleUserId,
-    accountId: currentAccount.id,
-    createdAt: serverTimestamp(),
+      return { ...prev, [name]: value };
+    });
   };
 
-  // ✅ Add installment object if enabled
-  if (formData.installmentsEnabled && formData.installments > 1) {
-    transactionData.installment = {
-      current: 1,
-      total: Number(formData.installments),
-    };
-  }
+  const handleToggleInstallments = (e) => {
+    const enabled = e.target.checked;
 
-  await addDoc(collection(db, "transactions"), transactionData);
+    setFormData((prev) => ({
+      ...prev,
+      installmentsEnabled: enabled,
+      installmentsTotal: enabled ? "2" : "1",
+      installmentsCurrent: "1",
+    }));
+  };
 
-  resetForm();
-  onClose();
-} catch (err) {
-  console.error(err);
-  setError("Error adding transaction");
-}
+  const resetForm = () => {
+    setFormData({
+      description: "",
+      amount: "",
+      category: "",
+      date: "",
+      classification: "expense",
+      method: "pix",
+      responsibleUserId: currentUserId || "",
+      installmentsEnabled: false,
+      installmentsTotal: "2",
+      installmentsCurrent: "1",
+    });
+    setError(null);
+  };
 
+  const handleSubmit = async () => {
+    try {
+      if (!currentAccount?.id) {
+        setError("No account selected");
+        return;
+      }
 
-};
+      const amount = Math.abs(parseFloat(formData.amount) || 0);
 
-const showInstallments =
-formData.method === "credit_card";
+      // 🔒 Installment validation
+      if (formData.installmentsEnabled) {
+        const total = Number(formData.installmentsTotal);
+        const current = Number(formData.installmentsCurrent);
 
-return ( <Dialog open={open} onClose={onClose} fullWidth> <DialogTitle>Add Transaction</DialogTitle>
+        if (!formData.installmentsTotal || total < 2) {
+          setError("Total installments must be at least 2");
+          return;
+        }
 
+        if (
+          !formData.installmentsCurrent ||
+          current < 1 ||
+          current > total
+        ) {
+          setError("Current installment must be between 1 and total");
+          return;
+        }
+      }
 
-  <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-    {error && <Alert severity="error">{error}</Alert>}
+      const transactionData = {
+        description: formData.description,
+        amount,
+        category: formData.category,
+        date: formData.date,
+        classification: formData.classification,
+        method: formData.method,
+        responsibleUserId: formData.responsibleUserId,
+        accountId: currentAccount.id,
+        createdAt: serverTimestamp(),
+      };
 
-    <TextField
-      select
-      label="Type"
-      name="classification"
-      value={formData.classification}
-      onChange={handleChange}
-    >
-      <MenuItem value="revenue">Income</MenuItem>
-      <MenuItem value="expense">Expense</MenuItem>
-      <MenuItem value="investment">Investment</MenuItem>
-    </TextField>
+      // 💳 Installment metadata
+      if (formData.installmentsEnabled) {
+        transactionData.installment = {
+          current: Number(formData.installmentsCurrent),
+          total: Number(formData.installmentsTotal),
+        };
+      }
 
-    <TextField
-      label="Description"
-      name="description"
-      value={formData.description}
-      onChange={handleChange}
-    />
+      await addDoc(collection(db, "transactions"), transactionData);
 
-    <TextField
-      label="Amount"
-      name="amount"
-      type="number"
-      value={formData.amount}
-      onChange={handleChange}
-    />
+      resetForm();
+      onClose();
+    } catch (err) {
+      console.error(err);
+      setError("Error adding transaction");
+    }
+  };
 
-    <TextField
-      label="Date"
-      name="date"
-      type="date"
-      InputLabelProps={{ shrink: true }}
-      value={formData.date}
-      onChange={handleChange}
-    />
+  const showInstallments = formData.method === "credit_card";
 
-    <TextField
-      label="Category"
-      name="category"
-      value={formData.category}
-      onChange={handleChange}
-    />
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth>
+      <DialogTitle>Add Transaction</DialogTitle>
 
-    <TextField
-      select
-      label="Payment Method"
-      name="method"
-      value={formData.method}
-      onChange={handleChange}
-    >
-      <MenuItem value="pix">Pix</MenuItem>
-      <MenuItem value="credit_card">Credit Card</MenuItem>
-      <MenuItem value="transfer">Transfer</MenuItem>
-      <MenuItem value="cash">Cash</MenuItem>
-    </TextField>
+      <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        {error && <Alert severity="error">{error}</Alert>}
 
-    <TextField
-      select
-      label="Responsible"
-      name="responsibleUserId"
-      value={formData.responsibleUserId}
-      onChange={handleChange}
-    >
-      {members.map((m) => (
-        <MenuItem key={m.id} value={m.id}>
-          {m.name || m.email}
-        </MenuItem>
-      ))}
-    </TextField>
+        <TextField
+          select
+          label="Type"
+          name="classification"
+          value={formData.classification}
+          onChange={handleChange}
+        >
+          <MenuItem value="revenue">Income</MenuItem>
+          <MenuItem value="expense">Expense</MenuItem>
+          <MenuItem value="investment">Investment</MenuItem>
+        </TextField>
 
-    {/* 💳 INSTALLMENTS */}
-    {showInstallments && (
-      <>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={formData.installmentsEnabled}
-              onChange={handleToggleInstallments}
-            />
-          }
-          label="Pay in installments"
+        <TextField
+          label="Description"
+          name="description"
+          value={formData.description}
+          onChange={handleChange}
         />
 
-        {formData.installmentsEnabled && (
-          <TextField
-            label="Number of installments"
-            name="installments"
-            type="number"
-            inputProps={{ min: 2, max: 48 }}
-            value={formData.installments}
-            onChange={handleChange}
-          />
+        <TextField
+          label="Amount"
+          name="amount"
+          type="number"
+          value={formData.amount}
+          onChange={handleChange}
+        />
+
+        <TextField
+          label="Date"
+          name="date"
+          type="date"
+          InputLabelProps={{ shrink: true }}
+          value={formData.date}
+          onChange={handleChange}
+        />
+
+        <TextField
+          label="Category"
+          name="category"
+          value={formData.category}
+          onChange={handleChange}
+        />
+
+        <TextField
+          select
+          label="Payment Method"
+          name="method"
+          value={formData.method}
+          onChange={handleChange}
+        >
+          <MenuItem value="pix">Pix</MenuItem>
+          <MenuItem value="credit_card">Credit Card</MenuItem>
+          <MenuItem value="transfer">Transfer</MenuItem>
+          <MenuItem value="cash">Cash</MenuItem>
+        </TextField>
+
+        <TextField
+          select
+          label="Responsible"
+          name="responsibleUserId"
+          value={formData.responsibleUserId}
+          onChange={handleChange}
+        >
+          {members.map((m) => (
+            <MenuItem key={m.id} value={m.id}>
+              {m.name || m.email}
+            </MenuItem>
+          ))}
+        </TextField>
+
+        {/* 💳 INSTALLMENTS */}
+        {showInstallments && (
+          <>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={formData.installmentsEnabled}
+                  onChange={handleToggleInstallments}
+                />
+              }
+              label="Pay in installments"
+            />
+
+            {formData.installmentsEnabled && (
+              <>
+                <TextField
+                  label="Total installments"
+                  name="installmentsTotal"
+                  type="number"
+                  inputProps={{ min: 2, max: 48 }}
+                  value={formData.installmentsTotal}
+                  onChange={handleChange}
+                />
+
+                <TextField
+                  label="Current installment"
+                  name="installmentsCurrent"
+                  type="number"
+                  inputProps={{
+                    min: 1,
+                    max: formData.installmentsTotal || 48,
+                  }}
+                  value={formData.installmentsCurrent}
+                  onChange={handleChange}
+                />
+              </>
+            )}
+          </>
         )}
-      </>
-    )}
-  </DialogContent>
+      </DialogContent>
 
-  <DialogActions>
-    <Button onClick={onClose}>Cancel</Button>
-    <Button onClick={handleSubmit} variant="contained">
-      Add
-    </Button>
-  </DialogActions>
-</Dialog>
-
-
-);
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={handleSubmit} variant="contained">
+          Add
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
 }
