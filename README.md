@@ -95,12 +95,12 @@ Add multi-account dashboard (aggregate view)
 
 ## Current Context
 
-🧾 Guaiaca Project — Full Context Snapshot (v10)
+🧾 Guaiaca Project — Full Context Snapshot (v11)
 
-Last Updated: 2026-04-26
+Last Updated: 2026-04-30
 Type: React + Firebase (Firestore)
 Domain: Personal & Shared Finance Management
-Architecture Level: Early production-ready (solid foundation, evolving data model)
+Architecture Level: Early production-ready → transitioning into system hardening
 
 🧠 Core Concept
 
@@ -119,7 +119,7 @@ Frontend
 React (functional components)
 Context API (global state)
 MUI (Material UI)
-Recharts (charts)
+Recharts
 Backend
 Firebase Auth
 Firestore (real-time database)
@@ -135,7 +135,7 @@ Firestore onSnapshot drives UI
 No manual refresh
 4. Context-Driven State
 
-Global state handled via:
+Global state via:
 
 AccountContext
 DateContext
@@ -156,7 +156,7 @@ DateContext
   name?: string,
   accounts: string[]
 }
-💰 Transactions (Expanded)
+💰 Transactions (v11)
 {
   id: string,
   accountId: string,
@@ -180,11 +180,12 @@ DateContext
 
   createdAt: timestamp
 }
-🧠 Notes
-classification is now user-defined (not inferred)
+🧠 Notes (Updated)
+classification is user-defined
 amount is always positive
-financial direction comes from classification
-installments stored as metadata (not split transactions)
+Financial direction comes from classification
+Installments are metadata only (not split transactions)
+System now supports historical installment input
 🔄 AccountContext (Critical Layer)
 Responsibilities
 Load user accounts
@@ -235,10 +236,14 @@ expense → -balance
 investment → -balance
 👥 Collaboration System
 Capabilities
+
 Owner can:
+
 Share account
 Remove members
+
 Member can:
+
 Access shared account
 Leave account
 Share Flow
@@ -253,13 +258,6 @@ Only shared accounts can be shared
 Cannot add:
 yourself
 existing members
-Members UI
-Avatar chips
-👑 Owner badge
-"(You)" indicator
-Inline actions:
-remove (owner)
-leave (member)
 Permission Logic (Frontend)
 const isOwner = account.ownerId === currentUserId;
 const isShared = account.type === "shared";
@@ -270,28 +268,89 @@ Stored per account
 Real-time updates
 Single source of truth
 Balance Calculation
-
-Derived from transactions only
-
+Fully derived from transactions
 Filters
 Month
 Year
 (from DateContext)
-💳 Installments (New)
+💳 Installments System (v11 — Improved)
 Current Approach
+
 Stored as metadata:
+
 installment: {
   current: number,
   total: number
 }
+✅ New Capabilities
+User can define:
+Total installments
+Current installment
+Supports:
+Historical transaction entry (e.g. 5 of 12)
+🧠 UX Model (Important)
+Form inputs use string state
+Allows:
+empty input
+natural typing (no forced 0)
+Numeric validation happens only on submit
+Validation Rules
+current >= 1
+total >= 2
+current <= total
 Behavior
-Only available for credit_card method
-Created via UI toggle
-Does not generate multiple transactions
-Limitation
-No future projection yet
-No monthly distribution
-Purely informational for now
+Only available for credit_card
+Optional toggle
+Does NOT generate multiple transactions
+Does NOT distribute across months
+⚠️ Known Limitations
+No future projection
+No monthly impact calculation
+No linkage between installments
+Cannot reconstruct full installment history
+🧭 Strategic Position
+
+This is intentionally:
+
+A flexible metadata model, not a full installment engine
+
+Future paths:
+
+Projection engine (recommended next step)
+OR transaction splitting (heavier model)
+🧩 AddTransactionDialog (v11 — Matured)
+Responsibilities
+Fully isolated transaction form
+Handles:
+classification
+category
+method
+responsible user
+installments (enhanced)
+Key Improvements
+
+✅ Installments:
+
+total + current supported
+Historical input enabled
+
+✅ UX Fix:
+
+Inputs no longer force 0
+Empty values allowed during typing
+
+✅ Validation:
+
+Strict constraints on submit
+
+✅ State Design:
+
+Form uses strings
+Model uses numbers
+Architectural Impact
+Removed hidden assumption (current = 1)
+Prevented invalid installment states
+Improved real-world usability
 📱 UI Structure
 Layout
 DashboardLayout
@@ -299,44 +358,31 @@ Navigation
 Drawers (account/date)
 FAB (add transaction)
 Main Screens
+
 Overview
+
 Balance card
 Summary cards
 Pie chart
 Members bar
 Share dialog
+
 Transactions
-List of transactions
-Delete functionality
+
+List
+Delete
 (Edit pending)
+
 Settings
+
 Account info
 Members (read-only)
-🧩 Key Components (Updated)
-AccountMembersBar
-ShareAccountDialog
-ConfirmActionDialog
-CreateAccountDialog
-✅ AddTransactionDialog (NEW)
-🆕 AddTransactionDialog
-Responsibilities
-Isolated transaction form logic
-Handles:
-classification
-category
-method
-responsible user
-installments
-Benefits
-Decoupled from layout
-Reusable (future: edit transaction)
-Ready for validation layer
 🔐 Firestore Rules (Current State)
 Users
 allow read: if request.auth != null;
 
-⚠️ Allows email lookup (needed for sharing)
-⚠️ Not fully secure
+⚠️ Email lookup open
+⚠️ Not secure
 
 Accounts
 Read: members only
@@ -344,19 +390,18 @@ Update:
 owner → full control
 member → remove self only
 Transactions
-Access controlled via account membership
-⚠️ Known Limitations
+Access via account membership
+⚠️ Known Limitations (Updated)
 🔴 High Priority
-Firestore rules NOT enforcing:
-account type
+Firestore rules not fully enforced
 No atomic writes (share/remove)
 No schema validation (Zod)
-Members query limit (10 users)
+Member query limit (10 users)
 🟡 Medium Priority
 Roles (admin/editor/viewer)
 Account rename/delete
 Transaction editing
-Installment system (full implementation)
+Installment evolution (projection vs split)
 🟢 Low Priority
 UI polish
 Animations
@@ -370,7 +415,9 @@ Dark mode improvements
 ✅ Derived financial engine
 ✅ Stable AccountContext
 ✅ Permission-aware UI
-✅ Modular form architecture (NEW)
+✅ Modular form architecture
+✅ Flexible installment input (NEW)
+✅ Improved form UX (NEW)
 
 🔥 Biggest Achievements
 Solved async state desync (critical React issue)
@@ -380,29 +427,29 @@ Unified data model (accountId)
 Eliminated duplicated state bugs
 Introduced structured transaction model
 Decoupled form logic from layout
+Enabled historical installment tracking
+Fixed controlled input UX pitfalls
 📍 Current Development Stage
 
-👉 Early production-ready
+👉 Early production-ready → entering system hardening phase
 
-Now transitioning from:
-
-feature building → system hardening
-🧭 Immediate Next Steps (Updated)
-1. Security (most critical)
-Enforce Firestore rules (ownership, type)
-Add validation layer (Zod)
-2. Data Integrity
-Fix legacy transactions (wrong classification)
+🧭 Immediate Next Steps (Refined)
+1. 🔐 Security (Critical)
+Enforce Firestore rules (ownership + membership)
+Add schema validation (Zod)
+2. 🧱 Data Integrity
+Fix legacy transactions
 Normalize categories & methods
-3. Collaboration
+Introduce migration strategy (versioning)
+3. 👥 Collaboration
+Atomic writes (batch)
 Roles & permissions
 Member scaling (>10 users)
-4. Financial Features
+4. 💳 Financial Evolution
 Transaction editing
-Installment evolution:
-projection OR
-transaction splitting
-5. UX
-Account settings
-Better category selection
+Installment system:
+Projection engine (recommended next step)
+5. ✨ UX
+Inline validation (forms)
+Category system (structured)
 Faster transaction input
