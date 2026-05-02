@@ -86,21 +86,17 @@ Add multi-account dashboard (aggregate view)
 
 👉 Derived balance model (stored in account)
 
-👉 Build Edit Transaction
-
 - Zod Validation
 - Build category system (chips + presets)
-- Implement edit transaction (this will reuse the same dialog)
-- Enable user to inform the parcel not only total parcels and if the parcel was the 1 split into months
 
 ## Current Context
 
-🧾 Guaiaca Project — Full Context Snapshot (v11)
+🧾 Guaiaca Project — Full Context Snapshot (v12)
 
-Last Updated: 2026-04-30
+Last Updated: 2026-05-01
 Type: React + Firebase (Firestore)
 Domain: Personal & Shared Finance Management
-Architecture Level: Early production-ready → transitioning into system hardening
+Architecture Level: Early production-ready → system hardening (active phase)
 
 🧠 Core Concept
 
@@ -109,11 +105,13 @@ Guaiaca is a multi-account financial platform where:
 A user can own multiple accounts
 Accounts can be:
 personal (single user)
-shared (multiple users)
+shared (multi-user collaboration)
+
 Financial data is:
-real-time
-account-scoped
-dynamically aggregated
+
+Real-time (Firestore listeners)
+Account-scoped
+Dynamically aggregated (derived state)
 🏗️ Architecture Overview
 Frontend
 React (functional components)
@@ -156,7 +154,7 @@ DateContext
   name?: string,
   accounts: string[]
 }
-💰 Transactions (v11)
+💰 Transactions (v12 — Timezone-Safe)
 {
   id: string,
   accountId: string,
@@ -165,7 +163,12 @@ DateContext
   classification: "revenue" | "expense" | "investment",
 
   description: string,
+
+  // ✅ FIXED: timezone-safe timestamp
   date: timestamp,
+
+  // 🔮 (planned) future-safe date key
+  // dateKey: "YYYY-MM-DD",
 
   category?: string,
 
@@ -181,11 +184,22 @@ DateContext
   createdAt: timestamp
 }
 🧠 Notes (Updated)
-classification is user-defined
 amount is always positive
-Financial direction comes from classification
-Installments are metadata only (not split transactions)
-System now supports historical installment input
+Financial direction derived from classification
+Installments remain metadata-only
+System supports historical installment input
+🆕 Date Handling (Critical Fix)
+Dates are now created using:
+new Date(year, month - 1, day, 12)
+
+✅ Prevents:
+
+UTC shift bugs
+“transaction appears on previous day”
+timezone inconsistencies
+
+⚠️ toISOString() is no longer used for form hydration
+
 🔄 AccountContext (Critical Layer)
 Responsibilities
 Load user accounts
@@ -213,12 +227,16 @@ First available account
 Members Listener
 Subscribes to account members
 Fetches from /users
-⚠️ Limited to 10 users (Firestore in constraint)
+
+⚠️ Firestore in query limit → max 10 users
+
 Transactions Listener
-Real-time listener
+Real-time (onSnapshot)
 Filtered by:
 accountId
-selected month/year
+
+👉 Date filtering moved to client layer (DateContext)
+
 Balance Engine
 balancesByAccountId = {
   [accountId]: {
@@ -231,34 +249,34 @@ balancesByAccountId = {
 
 Rules:
 
-revenue → +balance
-expense → -balance
-investment → -balance
+revenue → +
+expense → -
+investment → -
 👥 Collaboration System
 Capabilities
 
-Owner can:
+Owner
 
 Share account
 Remove members
 
-Member can:
+Member
 
 Access shared account
 Leave account
 Share Flow
-Enter email
+Input email
 Query /users
-Add to:
+Update:
 account.members
 user.accounts
 Restrictions
 Only owner can share
-Only shared accounts can be shared
+Only shared accounts allowed
 Cannot add:
 yourself
 existing members
-Permission Logic (Frontend)
+Permission Logic
 const isOwner = account.ownerId === currentUserId;
 const isShared = account.type === "shared";
 const canShare = isOwner && isShared;
@@ -270,87 +288,68 @@ Single source of truth
 Balance Calculation
 Fully derived from transactions
 Filters
+
+From DateContext:
+
 Month
 Year
-(from DateContext)
-💳 Installments System (v11 — Improved)
-Current Approach
 
-Stored as metadata:
+⚠️ Filtering depends on correct timezone-safe dates (now fixed)
 
+💳 Installments System (v12)
+Current Model
 installment: {
   current: number,
   total: number
 }
-✅ New Capabilities
-User can define:
-Total installments
-Current installment
-Supports:
-Historical transaction entry (e.g. 5 of 12)
-🧠 UX Model (Important)
-Form inputs use string state
-Allows:
-empty input
-natural typing (no forced 0)
-Numeric validation happens only on submit
-Validation Rules
-current >= 1
-total >= 2
-current <= total
-Behavior
-Only available for credit_card
+Capabilities
+Supports historical input (e.g. 5/12)
 Optional toggle
-Does NOT generate multiple transactions
-Does NOT distribute across months
-⚠️ Known Limitations
-No future projection
-No monthly impact calculation
-No linkage between installments
-Cannot reconstruct full installment history
-🧭 Strategic Position
-
-This is intentionally:
-
-A flexible metadata model, not a full installment engine
-
-Future paths:
-
-Projection engine (recommended next step)
-OR transaction splitting (heavier model)
-🧩 AddTransactionDialog (v11 — Matured)
+Credit card only
+Constraints
+total >= 2
+1 <= current <= total
+Limitations
+No projection
+No monthly distribution
+No linkage across transactions
+🧩 AddTransactionDialog (v12 — Hardened)
 Responsibilities
-Fully isolated transaction form
-Handles:
-classification
-category
-method
-responsible user
-installments (enhanced)
+Create + Edit transactions
+Fully controlled form
 Key Improvements
-
-✅ Installments:
-
-total + current supported
-Historical input enabled
-
-✅ UX Fix:
-
-Inputs no longer force 0
-Empty values allowed during typing
-
-✅ Validation:
-
-Strict constraints on submit
-
-✅ State Design:
-
+✅ Timezone Fix (Critical)
+Local date creation (midday normalization)
+No UTC conversion bugs
+✅ Edit Mode (Fully Functional)
+Form pre-filled correctly
+No blank dialog issue
+✅ Diff-Aware UX (Pro-Level)
+Shows changed fields before saving
+✅ Inline Validation
+Real-time feedback
+Prevents invalid writes
+✅ Submission Safety
+Disabled button while saving
+Prevents duplicate writes
+✅ Stable State Model
 Form uses strings
 Model uses numbers
-Architectural Impact
-Removed hidden assumption (current = 1)
-Prevented invalid installment states
-Improved real-world usability
+📄 Transactions Page (v12 — UX Upgraded)
+Improvements
+✅ Click-to-edit interaction
+Entire card is interactive
+✅ Clear financial signal
+Signed amounts (+ / -)
+Color-coded
+✅ Installment visibility
+Inline display (e.g. 3/12)
+✅ Better formatting
+Localized dates
+Clean hierarchy
+✅ Edit + Delete actions
+Inline icons
+Non-blocking UX
 📱 UI Structure
 Layout
 DashboardLayout
@@ -358,98 +357,112 @@ Navigation
 Drawers (account/date)
 FAB (add transaction)
 Main Screens
-
 Overview
-
 Balance card
 Summary cards
 Pie chart
 Members bar
 Share dialog
-
 Transactions
-
-List
+List (improved UX)
 Delete
-(Edit pending)
-
+Edit (implemented)
 Settings
-
 Account info
 Members (read-only)
 🔐 Firestore Rules (Current State)
 Users
 allow read: if request.auth != null;
 
-⚠️ Email lookup open
-⚠️ Not secure
+⚠️ Email lookup still open (not secure)
 
 Accounts
 Read: members only
 Update:
 owner → full control
-member → remove self only
+member → remove self
 Transactions
 Access via account membership
 ⚠️ Known Limitations (Updated)
 🔴 High Priority
-Firestore rules not fully enforced
-No atomic writes (share/remove)
+Firestore rules incomplete
+No atomic writes (sharing)
 No schema validation (Zod)
-Member query limit (10 users)
+Member limit (10 users)
 🟡 Medium Priority
 Roles (admin/editor/viewer)
 Account rename/delete
-Transaction editing
-Installment evolution (projection vs split)
+Installment evolution
+Category normalization
 🟢 Low Priority
 UI polish
 Animations
-Dark mode improvements
+Dark mode
 🚀 Current Strengths
-
 ✅ Real-time architecture
 ✅ Clean data model
-✅ Multi-account support
-✅ Collaboration system
-✅ Derived financial engine
+✅ Multi-account system
+✅ Collaboration support
+✅ Derived balance engine
 ✅ Stable AccountContext
 ✅ Permission-aware UI
-✅ Modular form architecture
-✅ Flexible installment input (NEW)
-✅ Improved form UX (NEW)
-
+✅ Modular form system
+✅ Installment flexibility
+✅ Timezone-safe transactions (NEW)
+✅ Edit flow (NEW)
+✅ Improved UX (NEW)
 🔥 Biggest Achievements
 Solved async state desync (critical React issue)
 Built cross-account financial engine
-Implemented multi-user accounts
-Unified data model (accountId)
+Implemented collaboration model
+Unified transaction model (accountId)
 Eliminated duplicated state bugs
-Introduced structured transaction model
-Decoupled form logic from layout
-Enabled historical installment tracking
-Fixed controlled input UX pitfalls
+Structured transaction schema
+Decoupled form logic
+Enabled installment tracking
+Fixed controlled input UX issues
+Eliminated timezone bug (critical fintech issue)
+Introduced diff-aware editing UX
 📍 Current Development Stage
 
-👉 Early production-ready → entering system hardening phase
+👉 System hardening (active)
+Core product is now stable enough for real usage
 
 🧭 Immediate Next Steps (Refined)
 1. 🔐 Security (Critical)
-Enforce Firestore rules (ownership + membership)
+Enforce Firestore rules
 Add schema validation (Zod)
 2. 🧱 Data Integrity
-Fix legacy transactions
 Normalize categories & methods
-Introduce migration strategy (versioning)
+Introduce versioning/migrations
+(Optional) introduce dateKey
 3. 👥 Collaboration
 Atomic writes (batch)
 Roles & permissions
-Member scaling (>10 users)
+Scale members (>10 users)
 4. 💳 Financial Evolution
-Transaction editing
-Installment system:
-Projection engine (recommended next step)
+Installment projection engine (next big feature)
+Transaction editing enhancements
 5. ✨ UX
-Inline validation (forms)
-Category system (structured)
 Faster transaction input
+Structured categories
+Micro-interactions
+🧠 Strategic Insight (New)
+
+You just crossed a critical boundary:
+
+From “working app” → to financially reliable system
+
+Fixing the timezone bug + editing UX means:
+
+👉 Users can now trust the data
+
+That’s the real milestone.
+
+If you want next, we can move into:
+
+💳 Installment projection engine (high impact)
+📊 Monthly cash flow forecasting
+🧠 Smart categorization / insights layer
+
+That’s where this becomes a real fintech product.

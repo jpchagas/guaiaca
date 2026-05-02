@@ -8,12 +8,12 @@ import {
   Snackbar,
   Alert,
   Stack,
-  Dialog,
-  DialogTitle,
-  DialogActions,
   Button,
 } from "@mui/material";
-import { Delete as DeleteIcon } from "@mui/icons-material";
+import {
+  Delete as DeleteIcon,
+  Edit as EditIcon,
+} from "@mui/icons-material";
 
 import {
   collection,
@@ -26,24 +26,27 @@ import {
 import { db } from "../firebaseConfig";
 
 import { useAccount } from "../context/AccountContext";
-import { useDate } from "../context/DateContext"; // ✅ NEW
+import { useDate } from "../context/DateContext";
+
+import AddTransactionDialog from "../components/AddTransactionDialog";
 
 export default function Transactions() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const { currentAccount } = useAccount();
-  const { selectedMonth, selectedYear } = useDate(); // ✅ NEW
+  const { selectedMonth, selectedYear } = useDate();
 
+  const [editingTx, setEditingTx] = useState(null);
+
+  // 🔥 Snackbar with UNDO support
   const [snackbar, setSnackbar] = useState({
     open: false,
-    severity: "success",
     message: "",
+    action: null,
   });
 
-  const [deleteId, setDeleteId] = useState(null);
-
-  // 🔥 REALTIME LISTENER (ONLY ACCOUNT FILTER HERE)
+  // 🔥 REALTIME LISTENER
   useEffect(() => {
     if (!currentAccount?.id) {
       setTransactions([]);
@@ -73,7 +76,6 @@ export default function Transactions() {
         console.error(err);
         setSnackbar({
           open: true,
-          severity: "error",
           message: "Failed to fetch transactions.",
         });
         setLoading(false);
@@ -83,7 +85,7 @@ export default function Transactions() {
     return () => unsubscribe();
   }, [currentAccount?.id]);
 
-  // 🔥 FILTER BY DATE (MONTH + YEAR)
+  // 🔥 FILTER BY DATE
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
       if (!tx.date) return false;
@@ -100,33 +102,65 @@ export default function Transactions() {
     });
   }, [transactions, selectedMonth, selectedYear]);
 
-  // 🗑 DELETE
-  const confirmDelete = async () => {
-    try {
-      await deleteDoc(doc(db, "transactions", deleteId));
-
-      setSnackbar({
-        open: true,
-        severity: "success",
-        message: "Transaction deleted.",
-      });
-    } catch {
-      setSnackbar({
-        open: true,
-        severity: "error",
-        message: "Failed to delete transaction.",
-      });
-    } finally {
-      setDeleteId(null);
-    }
-  };
-
+  // 🎨 COLOR
   const getColor = (cls) =>
     cls === "revenue"
-      ? "success.main"
+      ? "#2e7d32"
       : cls === "expense"
-      ? "error.main"
-      : "warning.main";
+      ? "#d32f2f"
+      : "#ed6c02";
+
+  // 📅 FORMAT DATE
+  const formatDate = (date) => {
+    if (!date) return "—";
+
+    const d =
+      typeof date?.toDate === "function"
+        ? date.toDate()
+        : new Date(date);
+
+    return d.toLocaleDateString();
+  };
+
+  // 🧠 OPTIMISTIC DELETE + UNDO
+  const handleDelete = async (tx) => {
+    const previous = transactions;
+
+    // optimistic remove
+    setTransactions((list) => list.filter((t) => t.id !== tx.id));
+
+    let undone = false;
+
+    setSnackbar({
+      open: true,
+      message: "Transaction deleted",
+      action: (
+        <Button
+          color="secondary"
+          size="small"
+          onClick={() => {
+            undone = true;
+            setTransactions(previous);
+            setSnackbar((s) => ({ ...s, open: false }));
+          }}
+        >
+          UNDO
+        </Button>
+      ),
+    });
+
+    // wait before committing delete
+    setTimeout(async () => {
+      if (undone) return;
+
+      try {
+        await deleteDoc(doc(db, "transactions", tx.id));
+      } catch (err) {
+        console.error(err);
+        setTransactions(previous);
+      }
+    }, 3000);
+  };
 
   // ⏳ LOADING
   if (loading) {
@@ -148,12 +182,12 @@ export default function Transactions() {
     );
   }
 
-  // 📭 EMPTY STATE
+  // 📭 EMPTY
   if (filteredTransactions.length === 0) {
     return (
       <Box textAlign="center" mt={8}>
         <Typography color="text.secondary">
-          No transactions for this period
+          No transactions yet. Tap + to add one.
         </Typography>
       </Box>
     );
@@ -161,59 +195,103 @@ export default function Transactions() {
 
   return (
     <Box>
-      <Stack spacing={2}>
+      <Stack spacing={1.5}>
         {filteredTransactions.map((tx) => {
-          const amount = Number(tx.amount) || 0;
+          const amount = Number(tx.amount);
+
+          const signedAmount =
+            tx.classification === "revenue" ? amount : -amount;
 
           return (
             <Paper
               key={tx.id}
-              sx={{ p: 2, borderRadius: 3, position: "relative" }}
+              onClick={() => setEditingTx(tx)}
+              sx={{
+                p: 2,
+                borderRadius: 3,
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+                cursor: "pointer",
+                transition: "0.2s",
+                "&:hover": { boxShadow: 3 },
+              }}
             >
+              {/* DOT */}
               <Box
                 sx={{
-                  position: "absolute",
-                  top: 0,
-                  left: 16,
-                  width: 32,
-                  height: 4,
-                  borderRadius: 2,
-                  backgroundColor: "primary.main",
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  backgroundColor: getColor(tx.classification),
+                  flexShrink: 0,
                 }}
               />
 
-              <Box display="flex" justifyContent="space-between">
-                <Typography fontWeight={600}>
+              {/* CONTENT */}
+              <Box flex={1} minWidth={0}>
+                <Typography fontWeight={600} noWrap>
                   {tx.description || "No description"}
                 </Typography>
 
                 <Typography
-                  fontWeight={700}
-                  sx={{ color: getColor(tx.classification) }}
+                  variant="body2"
+                  color="text.secondary"
+                  noWrap
                 >
-                  ${amount.toFixed(2)}
-                </Typography>
-              </Box>
-
-              <Box mt={1}>
-                <Typography variant="body2" color="text.secondary">
                   {tx.category || "Other"} • {tx.method || "—"}
                 </Typography>
+
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                >
+                  {formatDate(tx.date)}
+                </Typography>
               </Box>
 
-              <Box
-                mt={1.5}
-                display="flex"
-                justifyContent="space-between"
-                alignItems="center"
-              >
-                <Typography variant="caption" color="text.secondary">
-                  {tx.date}
+              {/* AMOUNT */}
+              <Box textAlign="right">
+                <Typography
+                  fontWeight={700}
+                  sx={{
+                    color: getColor(tx.classification),
+                    fontSize: 16,
+                  }}
+                >
+                  {signedAmount > 0 ? "+" : "-"}$
+                  {Math.abs(amount || 0).toFixed(2)}
                 </Typography>
+
+                {tx.installment && (
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                  >
+                    {tx.installment.current}/
+                    {tx.installment.total}
+                  </Typography>
+                )}
+              </Box>
+
+              {/* ACTIONS */}
+              <Box display="flex">
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingTx(tx);
+                  }}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
 
                 <IconButton
                   size="small"
-                  onClick={() => setDeleteId(tx.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(tx);
+                  }}
                 >
                   <DeleteIcon fontSize="small" />
                 </IconButton>
@@ -223,28 +301,24 @@ export default function Transactions() {
         })}
       </Stack>
 
-      {/* DELETE DIALOG */}
-      <Dialog open={!!deleteId} onClose={() => setDeleteId(null)}>
-        <DialogTitle>Delete this transaction?</DialogTitle>
-        <DialogActions>
-          <Button onClick={() => setDeleteId(null)}>Cancel</Button>
-          <Button color="error" onClick={confirmDelete}>
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* ✏️ EDIT */}
+      <AddTransactionDialog
+        open={!!editingTx}
+        onClose={() => setEditingTx(null)}
+        initialData={editingTx}
+        mode="edit"
+      />
 
-      {/* SNACKBAR */}
+      {/* 🔔 SNACKBAR */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={3000}
         onClose={() =>
           setSnackbar((s) => ({ ...s, open: false }))
         }
+        action={snackbar.action}
       >
-        <Alert severity={snackbar.severity}>
-          {snackbar.message}
-        </Alert>
+        <Alert severity="info">{snackbar.message}</Alert>
       </Snackbar>
     </Box>
   );
