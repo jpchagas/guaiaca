@@ -21,7 +21,7 @@ const Signup = lazy(() => import("./pages/Signup"));
 const DashboardLayout = lazy(() => import("./pages/DashboardLayout"));
 const Overview = lazy(() => import("./pages/Overview"));
 const Transactions = lazy(() => import("./pages/Transactions"));
-const Settings = lazy(() => import("./pages/Settings"));
+const Budget = lazy(() => import("./pages/Budget"));
 
 /* -------------------- Loader -------------------- */
 function PageLoader() {
@@ -170,7 +170,13 @@ function App() {
             >
               <Route index element={<Overview />} />
               <Route path="transactions" element={<Transactions />} />
-              <Route path="settings" element={<Settings />} />
+              <Route path="budget" element={<Budget />} />
+
+              {/* 🔁 Legacy route redirect */}
+              <Route
+                path="settings"
+                element={<Navigate to="/dashboard/budget" replace />}
+              />
             </Route>
           </Routes>
         </Suspense>

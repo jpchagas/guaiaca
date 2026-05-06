@@ -22,7 +22,9 @@ import {
   serverTimestamp,
   Timestamp,
 } from "firebase/firestore";
+
 import { db } from "../firebaseConfig";
+import { useCategories } from "../hooks/useCategories";
 
 export default function AddTransactionDialog({
   open,
@@ -33,6 +35,7 @@ export default function AddTransactionDialog({
   initialData = null,
   mode = "create",
 }) {
+  const categories = useCategories();
   const isEdit = mode === "edit";
 
   const [error, setError] = useState(null);
@@ -51,7 +54,6 @@ export default function AddTransactionDialog({
     installmentsCurrent: "1",
   });
 
-  // ✅ LOCAL DATE FORMATTER (NO UTC BUG)
   const formatLocalDate = (d) => {
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, "0");
@@ -59,7 +61,6 @@ export default function AddTransactionDialog({
     return `${year}-${month}-${day}`;
   };
 
-  // ✅ HYDRATE FORM (FIXED)
   useEffect(() => {
     if (!open) return;
 
@@ -73,7 +74,7 @@ export default function AddTransactionDialog({
         description: initialData.description || "",
         amount: String(initialData.amount || ""),
         category: initialData.category || "",
-        date: formatLocalDate(date), // ✅ FIXED
+        date: formatLocalDate(date),
         classification: initialData.classification || "expense",
         method: initialData.method || "pix",
         responsibleUserId:
@@ -107,7 +108,6 @@ export default function AddTransactionDialog({
     setError(null);
   };
 
-  // 🧠 INLINE VALIDATION
   const validation = useMemo(() => {
     const errors = {};
 
@@ -119,58 +119,19 @@ export default function AddTransactionDialog({
       errors.date = "Select a date";
     }
 
-    if (formData.installmentsEnabled) {
-      const total = Number(formData.installmentsTotal);
-      const current = Number(formData.installmentsCurrent);
-
-      if (total < 2) {
-        errors.installmentsTotal = "Min 2";
-      }
-
-      if (current < 1 || current > total) {
-        errors.installmentsCurrent = "Invalid";
-      }
-    }
-
     return errors;
   }, [formData]);
 
   const isValid = Object.keys(validation).length === 0;
 
-  // 🔄 DIFF TRACKING
-  const diff = useMemo(() => {
-    if (!isEdit || !initialData) return null;
-
-    const changes = [];
-
-    if (Number(formData.amount) !== initialData.amount) {
-      changes.push(`Amount: ${initialData.amount} → ${formData.amount}`);
-    }
-
-    if (formData.category !== initialData.category) {
-      changes.push(`Category: ${initialData.category} → ${formData.category}`);
-    }
-
-    if (formData.date !== formatLocalDate(
-      typeof initialData.date?.toDate === "function"
-        ? initialData.date.toDate()
-        : new Date(initialData.date)
-    )) {
-      changes.push(`Date changed`);
-    }
-
-    return changes;
-  }, [formData, initialData]);
-
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((p) => ({ ...p, [name]: value }));
   };
 
-  // ✅ SAFE DATE CREATION (NO TIMEZONE BUG)
   const buildLocalDate = (dateString) => {
-    const [year, month, day] = dateString.split("-").map(Number);
-    return new Date(year, month - 1, day, 12); // midday = safest
+    const [y, m, d] = dateString.split("-").map(Number);
+    return new Date(y, m - 1, d, 12);
   };
 
   const handleSubmit = async () => {
@@ -181,7 +142,6 @@ export default function AddTransactionDialog({
 
     try {
       const amount = Math.abs(Number(formData.amount));
-
       const localDate = buildLocalDate(formData.date);
 
       const transactionData = {
@@ -192,7 +152,7 @@ export default function AddTransactionDialog({
         method: formData.method,
         responsibleUserId: formData.responsibleUserId,
         accountId: currentAccount.id,
-        date: Timestamp.fromDate(localDate), // ✅ FIXED
+        date: Timestamp.fromDate(localDate),
       };
 
       if (!isEdit) {
@@ -232,24 +192,8 @@ export default function AddTransactionDialog({
         {isEdit ? "Edit Transaction" : "Add Transaction"}
       </DialogTitle>
 
-      <DialogContent
-        sx={{ display: "flex", flexDirection: "column", gap: 2 }}
-      >
+      <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {error && <Alert severity="error">{error}</Alert>}
-
-        {/* DIFF */}
-        {diff && diff.length > 0 && (
-          <Box>
-            <Typography variant="caption" color="text.secondary">
-              Changes:
-            </Typography>
-            {diff.map((d, i) => (
-              <Typography key={i} variant="caption">
-                {d}
-              </Typography>
-            ))}
-          </Box>
-        )}
 
         <TextField
           label="Amount"
@@ -258,7 +202,6 @@ export default function AddTransactionDialog({
           onChange={handleChange}
           error={!!validation.amount}
           helperText={validation.amount}
-          autoFocus
         />
 
         <TextField
@@ -268,8 +211,6 @@ export default function AddTransactionDialog({
           value={formData.date}
           onChange={handleChange}
           InputLabelProps={{ shrink: true }}
-          error={!!validation.date}
-          helperText={validation.date}
         />
 
         <TextField
@@ -279,12 +220,20 @@ export default function AddTransactionDialog({
           onChange={handleChange}
         />
 
+        {/* CATEGORY */}
         <TextField
+          select
           label="Category"
           name="category"
           value={formData.category}
           onChange={handleChange}
-        />
+        >
+          {categories.map((c) => (
+            <MenuItem key={c.id} value={c.id}>
+              {c.name}
+            </MenuItem>
+          ))}
+        </TextField>
 
         <TextField
           select
@@ -311,7 +260,7 @@ export default function AddTransactionDialog({
           <MenuItem value="cash">Cash</MenuItem>
         </TextField>
 
-        {/* INSTALLMENTS */}
+        {/* INSTALLMENTS (RESTORED) */}
         {showInstallments && (
           <>
             <FormControlLabel
@@ -336,8 +285,6 @@ export default function AddTransactionDialog({
                   name="installmentsTotal"
                   value={formData.installmentsTotal}
                   onChange={handleChange}
-                  error={!!validation.installmentsTotal}
-                  helperText={validation.installmentsTotal}
                 />
 
                 <TextField
@@ -345,8 +292,6 @@ export default function AddTransactionDialog({
                   name="installmentsCurrent"
                   value={formData.installmentsCurrent}
                   onChange={handleChange}
-                  error={!!validation.installmentsCurrent}
-                  helperText={validation.installmentsCurrent}
                 />
               </>
             )}
@@ -361,11 +306,7 @@ export default function AddTransactionDialog({
           onClick={handleSubmit}
           disabled={!isValid || loading}
         >
-          {loading
-            ? "Saving..."
-            : isEdit
-            ? "Save changes"
-            : "Add"}
+          {loading ? "Saving..." : isEdit ? "Save changes" : "Add"}
         </Button>
       </DialogActions>
     </Dialog>

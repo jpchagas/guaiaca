@@ -88,15 +88,18 @@ Add multi-account dashboard (aggregate view)
 
 - Zod Validation
 - Build category system (chips + presets)
+Build a category map layer (clean + fast)
+Or auto-link category → classification (huge UX win)
+Add edit/delete budget (inline, no dialogs)
 
 ## Current Context
 
-🧾 Guaiaca Project — Full Context Snapshot (v12)
+🧾 Guaiaca Project — Full Context Snapshot (v13)
 
-Last Updated: 2026-05-01
+Last Updated: 2026-05-06
 Type: React + Firebase (Firestore)
 Domain: Personal & Shared Finance Management
-Architecture Level: Early production-ready → system hardening (active phase)
+Phase: System hardening + data normalization (active)
 
 🧠 Core Concept
 
@@ -107,37 +110,36 @@ Accounts can be:
 personal (single user)
 shared (multi-user collaboration)
 
-Financial data is:
+All financial data is:
 
 Real-time (Firestore listeners)
-Account-scoped
-Dynamically aggregated (derived state)
+Scoped by accountId
+Derived (no stored balances)
+Context-driven (AccountContext)
 🏗️ Architecture Overview
 Frontend
 React (functional components)
-Context API (global state)
+Context API (AccountContext, DateContext)
 MUI (Material UI)
-Recharts
 Backend
 Firebase Auth
-Firestore (real-time database)
+Firestore (real-time DB)
 🔑 Core Architectural Principles
 1. Single Source of Truth
 currentAccount drives all UI
 No duplicated account state
-2. Derived State (Not Stored)
+2. Derived State Only
 Balances computed from transactions
-No redundant financial fields
+No stored aggregates
 3. Real-Time First
-Firestore onSnapshot drives UI
-No manual refresh
-4. Context-Driven State
+onSnapshot for accounts & transactions
+4. Context Driven
 
-Global state via:
+Global state:
 
 AccountContext
 DateContext
-📦 Data Model (Updated)
+📦 Data Model (Updated v13)
 🏦 Accounts
 {
   id: string,
@@ -154,7 +156,7 @@ DateContext
   name?: string,
   accounts: string[]
 }
-💰 Transactions (v12 — Timezone-Safe)
+💰 Transactions (v13 stable)
 {
   id: string,
   accountId: string,
@@ -164,13 +166,9 @@ DateContext
 
   description: string,
 
-  // ✅ FIXED: timezone-safe timestamp
-  date: timestamp,
+  date: timestamp, // timezone-safe (midday normalized)
 
-  // 🔮 (planned) future-safe date key
-  // dateKey: "YYYY-MM-DD",
-
-  category?: string,
+  category: string, // categoryId from Firestore
 
   method?: "pix" | "credit_card" | "transfer" | "cash",
 
@@ -183,286 +181,186 @@ DateContext
 
   createdAt: timestamp
 }
-🧠 Notes (Updated)
-amount is always positive
-Financial direction derived from classification
-Installments remain metadata-only
-System supports historical installment input
-🆕 Date Handling (Critical Fix)
-Dates are now created using:
-new Date(year, month - 1, day, 12)
+🏷️ Categories (NEW SYSTEM)
+Collection: categories
 
-✅ Prevents:
+Each document:
 
-UTC shift bugs
-“transaction appears on previous day”
-timezone inconsistencies
-
-⚠️ toISOString() is no longer used for form hydration
-
-🔄 AccountContext (Critical Layer)
-Responsibilities
-Load user accounts
-Resolve currentAccount
-Sync account selection
-Provide members
-Provide transactions
-Compute balances
-Key State
-accounts: []
-currentAccountId: string | null
-currentAccount: object | null
-members: []
-transactions: []
-balancesByAccountId: {}
-loading: boolean
-Key Behaviors
-Deterministic Account Selection
-
-Priority:
-
-Current state
-localStorage
-First available account
-Members Listener
-Subscribes to account members
-Fetches from /users
-
-⚠️ Firestore in query limit → max 10 users
-
-Transactions Listener
-Real-time (onSnapshot)
-Filtered by:
-accountId
-
-👉 Date filtering moved to client layer (DateContext)
-
-Balance Engine
-balancesByAccountId = {
-  [accountId]: {
-    income,
-    expenses,
-    investments,
-    balance
-  }
+{
+  name: string,
+  key: string, // normalized slug
+  createdAt: timestamp
 }
+Seeded categories include:
+Salário
+Receita de negócios
+Investimentos
+Reembolsos
+Condomínio
+Energia elétrica
+Água
+Gás
+Internet
+Manutenção
+Telefone
+Impostos
+Supermercado
+Restaurantes
+Bares
+Transporte
+Compras
+Cuidados Pessoais
+Doações & Presentes
+Saúde & Bem-estar
+Assinaturas
+Viagens
+Entretenimento & Lazer
+Tarifas bancárias
+Empréstimos / financiamentos
+Educação
+Família & Filhos
+Animais de Estimação
+🧠 Categories System (NEW FEATURE)
+Hook
+useCategories()
+Behavior:
+Real-time Firestore listener
+Ordered by name
+Shared across:
+AddTransactionDialog
+AddBudgetDialog
+Key Design Decision
+Transactions store categoryId
+UI resolves name via categories collection
 
-Rules:
+👉 This is a normalization step (important for scale)
 
-revenue → +
-expense → -
-investment → -
-👥 Collaboration System
-Capabilities
-
-Owner
-
-Share account
-Remove members
-
-Member
-
-Access shared account
-Leave account
-Share Flow
-Input email
-Query /users
-Update:
-account.members
-user.accounts
-Restrictions
-Only owner can share
-Only shared accounts allowed
-Cannot add:
-yourself
-existing members
-Permission Logic
-const isOwner = account.ownerId === currentUserId;
-const isShared = account.type === "shared";
-const canShare = isOwner && isShared;
-📊 Financial System
-Transactions
-Stored per account
-Real-time updates
-Single source of truth
-Balance Calculation
-Fully derived from transactions
-Filters
-
-From DateContext:
-
-Month
-Year
-
-⚠️ Filtering depends on correct timezone-safe dates (now fixed)
-
-💳 Installments System (v12)
-Current Model
-installment: {
-  current: number,
-  total: number
+💳 Budget System (NEW FEATURE)
+Budget model
+{
+  accountId: string,
+  category: string, // categoryId
+  limit: number,
+  period: "monthly",
+  createdAt: timestamp
 }
-Capabilities
-Supports historical input (e.g. 5/12)
-Optional toggle
-Credit card only
-Constraints
-total >= 2
-1 <= current <= total
-Limitations
-No projection
-No monthly distribution
-No linkage across transactions
-🧩 AddTransactionDialog (v12 — Hardened)
-Responsibilities
+Budget Dialog (v13)
+Category selection from Firestore
+Inline category creation supported
+Prevents free-text drift
+Ensures consistent reporting
+🧾 AddTransactionDialog (v13)
+Current capabilities:
+Core
 Create + Edit transactions
-Fully controlled form
-Key Improvements
-✅ Timezone Fix (Critical)
-Local date creation (midday normalization)
-No UTC conversion bugs
-✅ Edit Mode (Fully Functional)
-Form pre-filled correctly
-No blank dialog issue
-✅ Diff-Aware UX (Pro-Level)
-Shows changed fields before saving
-✅ Inline Validation
-Real-time feedback
-Prevents invalid writes
-✅ Submission Safety
-Disabled button while saving
-Prevents duplicate writes
-✅ Stable State Model
-Form uses strings
-Model uses numbers
-📄 Transactions Page (v12 — UX Upgraded)
-Improvements
-✅ Click-to-edit interaction
-Entire card is interactive
-✅ Clear financial signal
-Signed amounts (+ / -)
-Color-coded
-✅ Installment visibility
-Inline display (e.g. 3/12)
-✅ Better formatting
-Localized dates
-Clean hierarchy
-✅ Edit + Delete actions
-Inline icons
-Non-blocking UX
+Full controlled form
+Category system
+Select from Firestore categories
+Uses categoryId (not free text)
+Installments (fully preserved)
+installment: {
+  current,
+  total
+}
+UX improvements
+Edit mode prefill
+Validation
+Safe date handling (midday normalization)
+Submission locking
+Installment logic
+Only enabled for credit_card
+1 ≤ current ≤ total
+total ≥ 2
+🧾 AddBudgetDialog (v13)
+Features
+Select category from Firestore
+Inline category creation
+Monthly budget limit
+Account-scoped budgets
 📱 UI Structure
 Layout
 DashboardLayout
-Navigation
-Drawers (account/date)
-FAB (add transaction)
-Main Screens
+Bottom navigation
+Floating Action Button (Add Transaction)
+Screens
 Overview
-Balance card
-Summary cards
-Pie chart
-Members bar
-Share dialog
 Transactions
-List (improved UX)
-Delete
-Edit (implemented)
-Settings
-Account info
-Members (read-only)
-🔐 Firestore Rules (Current State)
-Users
-allow read: if request.auth != null;
-
-⚠️ Email lookup still open (not secure)
-
+Budget (NEW)
+Settings (simplified)
+🔐 Firestore Rules (Current Status)
+Problem area
+Rules still partially permissive
+Category collection currently open
 Accounts
-Read: members only
-Update:
-owner → full control
-member → remove self
+Member-based access
 Transactions
-Access via account membership
-⚠️ Known Limitations (Updated)
-🔴 High Priority
-Firestore rules incomplete
-No atomic writes (sharing)
-No schema validation (Zod)
-Member limit (10 users)
-🟡 Medium Priority
-Roles (admin/editor/viewer)
-Account rename/delete
-Installment evolution
-Category normalization
-🟢 Low Priority
+Scoped by accountId membership
+⚠️ Known Gaps (Updated)
+🔴 Critical
+Firestore rules not fully hardened
+No batch writes for category creation flows
+🟡 Medium
+No schema validation layer (Zod missing)
+No category enforcement rules
+No budget aggregation engine yet
+🟢 Low
 UI polish
-Animations
-Dark mode
-🚀 Current Strengths
-✅ Real-time architecture
-✅ Clean data model
-✅ Multi-account system
-✅ Collaboration support
-✅ Derived balance engine
-✅ Stable AccountContext
-✅ Permission-aware UI
-✅ Modular form system
-✅ Installment flexibility
-✅ Timezone-safe transactions (NEW)
-✅ Edit flow (NEW)
-✅ Improved UX (NEW)
-🔥 Biggest Achievements
-Solved async state desync (critical React issue)
-Built cross-account financial engine
-Implemented collaboration model
-Unified transaction model (accountId)
-Eliminated duplicated state bugs
-Structured transaction schema
-Decoupled form logic
-Enabled installment tracking
-Fixed controlled input UX issues
-Eliminated timezone bug (critical fintech issue)
-Introduced diff-aware editing UX
-📍 Current Development Stage
+category autocomplete UX upgrade
+analytics layer missing
+🚀 Major Achievements (Updated)
+Core system stability
+Multi-account architecture stable
+Real-time sync working correctly
+Data correctness
+Fixed timezone bug (critical fintech issue)
+Normalized transaction model
+UX improvements
+Edit transaction flow fully working
+Diff-aware editing UX
+Category system introduced (major normalization step)
+System evolution
+Moved from free-text categories → structured taxonomy
+Introduced Firestore-driven metadata layer
+Began financial data normalization phase
+🧭 Current Development Phase
 
-👉 System hardening (active)
-Core product is now stable enough for real usage
+👉 System hardening + financial data normalization
 
+This phase focuses on:
+
+data consistency
+schema enforcement
+scalable financial modeling
 🧭 Immediate Next Steps (Refined)
-1. 🔐 Security (Critical)
-Enforce Firestore rules
-Add schema validation (Zod)
-2. 🧱 Data Integrity
-Normalize categories & methods
-Introduce versioning/migrations
-(Optional) introduce dateKey
-3. 👥 Collaboration
-Atomic writes (batch)
-Roles & permissions
-Scale members (>10 users)
-4. 💳 Financial Evolution
-Installment projection engine (next big feature)
-Transaction editing enhancements
-5. ✨ UX
-Faster transaction input
-Structured categories
-Micro-interactions
-🧠 Strategic Insight (New)
+1. 🔐 Security Hardening (HIGH PRIORITY)
+Fix Firestore rules (categories + budgets)
+Introduce role system (owner / member / viewer)
+Lock category creation permissions
+2. 🧱 Data Integrity Layer
+Prevent duplicate categories
+Normalize category keys
+Introduce validation layer (Zod recommended)
+3. 💳 Budget Engine Evolution
 
-You just crossed a critical boundary:
+Next step after current work:
 
-From “working app” → to financially reliable system
+Monthly spending aggregation per category
+Budget vs actual comparison
+Progress indicators
+4. 📊 Analytics Layer (Upcoming)
+Category breakdown
+Spending trends
+Monthly insights
+🧠 Strategic Insight (Updated)
 
-Fixing the timezone bug + editing UX means:
+You’ve now crossed a key architectural threshold:
 
-👉 Users can now trust the data
+👉 From flexible CRUD system → to structured financial model
 
-That’s the real milestone.
+This is important because:
 
-If you want next, we can move into:
+categories are now normalized entities
+budgets are linked to structured taxonomy
+transactions are no longer free-text driven
 
-💳 Installment projection engine (high impact)
-📊 Monthly cash flow forecasting
-🧠 Smart categorization / insights layer
-
-That’s where this becomes a real fintech product.
+👉 This is what enables real analytics later.
