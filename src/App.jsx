@@ -22,6 +22,7 @@ const DashboardLayout = lazy(() => import("./pages/DashboardLayout"));
 const Overview = lazy(() => import("./pages/Overview"));
 const Transactions = lazy(() => import("./pages/Transactions"));
 const Budget = lazy(() => import("./pages/Budget"));
+const Goals = lazy(() => import("./pages/Goals")); // ✅ NEW
 
 /* -------------------- Loader -------------------- */
 function PageLoader() {
@@ -81,15 +82,16 @@ function App() {
         if (u) {
           try {
             const userDoc = await getDoc(doc(db, "users", u.uid));
+
             if (userDoc.exists()) {
               const userData = userDoc.data();
 
-              // 🔹 Legacy householdId migration
               if (
                 (!userData.accounts || userData.accounts.length === 0) &&
                 userData.householdId
               ) {
                 const accountRef = doc(collection(db, "accounts"));
+
                 await setDoc(accountRef, {
                   name: "Family Account",
                   type: "household",
@@ -108,7 +110,7 @@ function App() {
 
                 localStorage.setItem("currentAccountId", accountRef.id);
                 localStorage.setItem("householdId", userData.householdId);
-              } else if (userData.accounts && userData.accounts.length > 0) {
+              } else if (userData.accounts?.length > 0) {
                 localStorage.setItem(
                   "currentAccountId",
                   userData.accounts[0]
@@ -117,11 +119,10 @@ function App() {
 
               setUser(u);
             } else {
-              console.warn("User doc not found");
               setUser(null);
             }
           } catch (err) {
-            console.error("Error fetching user data:", err);
+            console.error(err);
             setUser(u);
           }
         } else {
@@ -136,9 +137,7 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // Splash first
   if (showSplash) return <SplashScreen />;
-
   if (authLoading) return null;
 
   return (
@@ -171,12 +170,7 @@ function App() {
               <Route index element={<Overview />} />
               <Route path="transactions" element={<Transactions />} />
               <Route path="budget" element={<Budget />} />
-
-              {/* 🔁 Legacy route redirect */}
-              <Route
-                path="settings"
-                element={<Navigate to="/dashboard/budget" replace />}
-              />
+              <Route path="goals" element={<Goals />} /> {/* ✅ NEW */}
             </Route>
           </Routes>
         </Suspense>

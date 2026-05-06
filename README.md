@@ -91,15 +91,16 @@ Add multi-account dashboard (aggregate view)
 Build a category map layer (clean + fast)
 Or auto-link category → classification (huge UX win)
 Add edit/delete budget (inline, no dialogs)
+connecting Goals ↔ Transactions (this is where it becomes powerful)
 
 ## Current Context
 
-🧾 Guaiaca Project — Full Context Snapshot (v13)
+🧾 Guaiaca Project — Full Context Snapshot (v14)
 
 Last Updated: 2026-05-06
 Type: React + Firebase (Firestore)
 Domain: Personal & Shared Finance Management
-Phase: System hardening + data normalization (active)
+Phase: System hardening + financial data normalization (active)
 
 🧠 Core Concept
 
@@ -107,39 +108,45 @@ Guaiaca is a multi-account financial platform where:
 
 A user can own multiple accounts
 Accounts can be:
-personal (single user)
+personal (single-user)
 shared (multi-user collaboration)
 
 All financial data is:
 
-Real-time (Firestore listeners)
-Scoped by accountId
-Derived (no stored balances)
-Context-driven (AccountContext)
+🔄 Real-time (Firestore listeners)
+📦 Scoped by accountId
+🧠 Fully derived (no stored balances)
+🧩 Context-driven (AccountContext + DateContext)
 🏗️ Architecture Overview
 Frontend
 React (functional components)
-Context API (AccountContext, DateContext)
+Context API:
+AccountContext
+DateContext
 MUI (Material UI)
 Backend
 Firebase Auth
-Firestore (real-time DB)
+Firestore (real-time database)
 🔑 Core Architectural Principles
 1. Single Source of Truth
-currentAccount drives all UI
+currentAccount drives all UI state
 No duplicated account state
 2. Derived State Only
 Balances computed from transactions
 No stored aggregates
 3. Real-Time First
-onSnapshot for accounts & transactions
-4. Context Driven
+onSnapshot drives:
+transactions
+accounts
+budgets
+categories
+4. Context-Driven Architecture
 
 Global state:
 
 AccountContext
 DateContext
-📦 Data Model (Updated v13)
+📦 Data Model (v14 Stable)
 🏦 Accounts
 {
   id: string,
@@ -156,7 +163,7 @@ DateContext
   name?: string,
   accounts: string[]
 }
-💰 Transactions (v13 stable)
+💰 Transactions (v14 stable)
 {
   id: string,
   accountId: string,
@@ -168,7 +175,7 @@ DateContext
 
   date: timestamp, // timezone-safe (midday normalized)
 
-  category: string, // categoryId from Firestore
+  category: string, // categoryId
 
   method?: "pix" | "credit_card" | "transfer" | "cash",
 
@@ -181,17 +188,14 @@ DateContext
 
   createdAt: timestamp
 }
-🏷️ Categories (NEW SYSTEM)
-Collection: categories
-
-Each document:
-
+🏷️ Categories System (NEW — NORMALIZED TAXONOMY)
+📂 Collection: categories
 {
   name: string,
   key: string, // normalized slug
   createdAt: timestamp
 }
-Seeded categories include:
+Seeded Categories
 Salário
 Receita de negócios
 Investimentos
@@ -220,10 +224,10 @@ Empréstimos / financiamentos
 Educação
 Família & Filhos
 Animais de Estimação
-🧠 Categories System (NEW FEATURE)
+🧠 Categories System Behavior
 Hook
 useCategories()
-Behavior:
+Behavior
 Real-time Firestore listener
 Ordered by name
 Shared across:
@@ -233,10 +237,10 @@ Key Design Decision
 Transactions store categoryId
 UI resolves name via categories collection
 
-👉 This is a normalization step (important for scale)
+👉 This enables financial analytics later
 
-💳 Budget System (NEW FEATURE)
-Budget model
+💳 Budget System (NEW)
+Budget Model
 {
   accountId: string,
   category: string, // categoryId
@@ -244,123 +248,153 @@ Budget model
   period: "monthly",
   createdAt: timestamp
 }
-Budget Dialog (v13)
+Budget Features (v14)
 Category selection from Firestore
-Inline category creation supported
-Prevents free-text drift
-Ensures consistent reporting
-🧾 AddTransactionDialog (v13)
-Current capabilities:
-Core
+Inline category creation support
+Account-scoped budgets
+Monthly limit tracking
+🧾 AddTransactionDialog (v14)
+Core Features
 Create + Edit transactions
-Full controlled form
-Category system
-Select from Firestore categories
-Uses categoryId (not free text)
-Installments (fully preserved)
+Fully controlled form
+Category system (Firestore-driven)
+Installments fully supported
+Category Handling
+Uses categoryId
+No free-text categories anymore
+Ensures normalization across system
+Installments System
 installment: {
-  current,
-  total
+  current: number,
+  total: number
 }
-UX improvements
-Edit mode prefill
-Validation
-Safe date handling (midday normalization)
-Submission locking
-Installment logic
-Only enabled for credit_card
-1 ≤ current ≤ total
+
+Rules:
+
 total ≥ 2
-🧾 AddBudgetDialog (v13)
+1 ≤ current ≤ total
+Only enabled for credit_card
+UX Improvements
+Edit mode prefill
+Diff-aware editing
+Validation layer
+Safe date handling (midday normalization)
+Submission locking (prevents double writes)
+🧾 AddBudgetDialog (v14)
 Features
 Select category from Firestore
-Inline category creation
-Monthly budget limit
-Account-scoped budgets
+Inline category creation (planned UX expansion)
+Monthly budget limits
+Account-scoped storage
+📊 Goals System (NEW FOUNDATION)
+Status
+Route exists
+Firestore collection implied: /goals
+Requires same accountId pattern as budgets
+Expected Model
+{
+  accountId: string,
+  name: string,
+  target: number,
+  current: number,
+  category?: string,
+  createdAt: timestamp
+}
 📱 UI Structure
 Layout
 DashboardLayout
-Bottom navigation
-Floating Action Button (Add Transaction)
+Bottom Navigation
+FAB (context-aware actions)
 Screens
 Overview
 Transactions
-Budget (NEW)
+Budget
+Goals (NEW - in progress)
 Settings (simplified)
-🔐 Firestore Rules (Current Status)
-Problem area
-Rules still partially permissive
-Category collection currently open
-Accounts
-Member-based access
-Transactions
-Scoped by accountId membership
-⚠️ Known Gaps (Updated)
+🔐 Firestore Rules (CURRENT STATE)
+Strength
+Account-based access control exists
+Transaction scoping works
+Budget rules introduced
+Weak Points (Important)
+Category creation is open (intentional but unsafe long-term)
+No schema validation layer
+No role system yet (owner/member/viewer)
+No batch atomic operations
+⚠️ Known Gaps (v14)
 🔴 Critical
 Firestore rules not fully hardened
-No batch writes for category creation flows
+Goals rules must match budgets pattern strictly
+No validation layer (Zod missing)
 🟡 Medium
-No schema validation layer (Zod missing)
-No category enforcement rules
-No budget aggregation engine yet
+No duplicate category protection
+No budget aggregation engine
+No analytics layer yet
 🟢 Low
 UI polish
-category autocomplete UX upgrade
-analytics layer missing
+Category autocomplete UX improvement
+Insights dashboard missing
 🚀 Major Achievements (Updated)
-Core system stability
+Core Stability
 Multi-account architecture stable
-Real-time sync working correctly
-Data correctness
+Real-time sync fully working
+AccountContext reliable
+Data Integrity
 Fixed timezone bug (critical fintech issue)
-Normalized transaction model
-UX improvements
+Normalized transaction schema
+Introduced category system (major milestone)
+UX Improvements
 Edit transaction flow fully working
 Diff-aware editing UX
-Category system introduced (major normalization step)
-System evolution
-Moved from free-text categories → structured taxonomy
-Introduced Firestore-driven metadata layer
-Began financial data normalization phase
+Installment system stable
+System Evolution
+Free-text categories → structured taxonomy
+Firestore metadata layer introduced
+Financial modeling foundation established
 🧭 Current Development Phase
 
 👉 System hardening + financial data normalization
 
-This phase focuses on:
+Focus:
 
 data consistency
 schema enforcement
 scalable financial modeling
-🧭 Immediate Next Steps (Refined)
+analytics preparation
+🧭 Immediate Next Steps
 1. 🔐 Security Hardening (HIGH PRIORITY)
-Fix Firestore rules (categories + budgets)
-Introduce role system (owner / member / viewer)
-Lock category creation permissions
+Fix Firestore rules (categories + goals consistency)
+Introduce role system
+Lock category creation strategy
 2. 🧱 Data Integrity Layer
 Prevent duplicate categories
-Normalize category keys
-Introduce validation layer (Zod recommended)
+Normalize category keys strictly
+Add validation layer (recommended: Zod)
 3. 💳 Budget Engine Evolution
-
-Next step after current work:
-
-Monthly spending aggregation per category
+Monthly spending aggregation
 Budget vs actual comparison
 Progress indicators
-4. 📊 Analytics Layer (Upcoming)
-Category breakdown
-Spending trends
-Monthly insights
+4. 🎯 Goals System (NEXT FEATURE)
+Savings tracking
+Progress visualization
+Link goals → budgets → categories
+5. 📊 Analytics Layer (NEXT PHASE)
+Category breakdowns
+Monthly trends
+Financial insights engine
 🧠 Strategic Insight (Updated)
 
-You’ve now crossed a key architectural threshold:
+You are now beyond CRUD.
 
-👉 From flexible CRUD system → to structured financial model
+👉 The system is transitioning into:
 
-This is important because:
+🧠 A structured financial intelligence model
 
-categories are now normalized entities
-budgets are linked to structured taxonomy
-transactions are no longer free-text driven
+Because now:
 
-👉 This is what enables real analytics later.
+categories are normalized entities
+budgets are structured constraints
+transactions are typed financial events
+accounts are scoped ledgers
+
+👉 This is the foundation of a fintech-grade system.

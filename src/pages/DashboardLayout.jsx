@@ -16,7 +16,8 @@ import {
   Logout,
   Home,
   AccountBalanceWallet,
-  PieChart, // 👈 better icon for budget
+  PieChart,
+  Flag, // ✅ NEW
 } from "@mui/icons-material";
 
 import AddIcon from "@mui/icons-material/Add";
@@ -30,13 +31,13 @@ import ContextHeader from "../components/ContextHeader";
 import AccountSwitcher from "../components/AccountSwitcher";
 import DateSwitcher from "../components/DateSwitcher";
 import AddTransactionDialog from "../components/AddTransactionDialog";
-import AddBudgetDialog from "../components/AddBudgetDialog"; // 👈 NEW
+import AddBudgetDialog from "../components/AddBudgetDialog";
 
 import { useAccount } from "../context/AccountContext";
 
 export default function DashboardLayout() {
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
-  const [budgetDialogOpen, setBudgetDialogOpen] = useState(false); // 👈 NEW
+  const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
   const [createAccountOpen, setCreateAccountOpen] = useState(false);
 
   const [accountDrawerOpen, setAccountDrawerOpen] = useState(false);
@@ -53,7 +54,6 @@ export default function DashboardLayout() {
 
   const navigate = useNavigate();
   const location = useLocation();
-  const fileInputRef = useRef(null);
 
   const currentUserId = auth.currentUser?.uid;
 
@@ -62,31 +62,32 @@ export default function DashboardLayout() {
     navigate("/");
   };
 
-  /* -------------------- Routing Helpers -------------------- */
+  /* -------------------- Pages -------------------- */
 
   const isTransactionsPage = location.pathname.includes("transactions");
   const isBudgetPage = location.pathname.includes("budget");
+  const isGoalsPage = location.pathname.includes("goals"); // ✅ NEW
 
   const getPageTitle = () => {
     if (isTransactionsPage) return "Transactions";
     if (isBudgetPage) return "Budget";
+    if (isGoalsPage) return "Goals";
     return "Overview";
   };
 
   const getNavIndex = () => {
     if (isTransactionsPage) return 1;
     if (isBudgetPage) return 2;
+    if (isGoalsPage) return 3;
     return 0;
   };
 
-  /* -------------------- FAB Behavior -------------------- */
+  /* -------------------- FAB -------------------- */
 
   const handleFabClick = () => {
-    if (isTransactionsPage) {
-      setManualDialogOpen(true);
-    } else if (isBudgetPage) {
-      setBudgetDialogOpen(true);
-    }
+    if (isTransactionsPage) setManualDialogOpen(true);
+    if (isBudgetPage) setBudgetDialogOpen(true);
+    // Goals FAB can be added later
   };
 
   if (loading) {
@@ -99,7 +100,7 @@ export default function DashboardLayout() {
 
   return (
     <Box sx={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
-      {/* -------------------- AppBar -------------------- */}
+      {/* APP BAR */}
       <AppBar position="fixed">
         <Toolbar>
           <Typography variant="h6" fontWeight={600}>
@@ -119,14 +120,14 @@ export default function DashboardLayout() {
         </Toolbar>
       </AppBar>
 
-      {/* -------------------- Content -------------------- */}
+      {/* CONTENT */}
       <Box sx={{ flex: 1, mt: 8, mb: 12 }}>
         <Container maxWidth="sm">
           <Outlet />
         </Container>
       </Box>
 
-      {/* -------------------- Drawers -------------------- */}
+      {/* DRAWERS */}
       <AccountSwitcher
         accounts={accounts}
         currentAccountId={currentAccountId}
@@ -142,14 +143,15 @@ export default function DashboardLayout() {
         onClose={() => setDateDrawerOpen(false)}
       />
 
-      {/* -------------------- Bottom Nav -------------------- */}
+      {/* BOTTOM NAV */}
       <Paper sx={{ position: "fixed", bottom: 0, left: 0, right: 0 }}>
         <BottomNavigation
           value={getNavIndex()}
           onChange={(e, newValue) => {
             if (newValue === 0) navigate("/dashboard");
             if (newValue === 1) navigate("/dashboard/transactions");
-            if (newValue === 2) navigate("/dashboard/budget"); // 👈 UPDATED
+            if (newValue === 2) navigate("/dashboard/budget");
+            if (newValue === 3) navigate("/dashboard/goals"); // ✅ NEW
           }}
         >
           <BottomNavigationAction label="Overview" icon={<Home />} />
@@ -157,14 +159,12 @@ export default function DashboardLayout() {
             label="Transactions"
             icon={<AccountBalanceWallet />}
           />
-          <BottomNavigationAction
-            label="Budget"
-            icon={<PieChart />} // 👈 UPDATED
-          />
+          <BottomNavigationAction label="Budget" icon={<PieChart />} />
+          <BottomNavigationAction label="Goals" icon={<Flag />} /> {/* ✅ NEW */}
         </BottomNavigation>
       </Paper>
 
-      {/* -------------------- FAB -------------------- */}
+      {/* FAB */}
       {(isTransactionsPage || isBudgetPage) && (
         <Fab
           onClick={handleFabClick}
@@ -175,7 +175,7 @@ export default function DashboardLayout() {
         </Fab>
       )}
 
-      {/* -------------------- Dialogs -------------------- */}
+      {/* DIALOGS */}
       <CreateAccountDialog
         open={createAccountOpen}
         onClose={() => setCreateAccountOpen(false)}
