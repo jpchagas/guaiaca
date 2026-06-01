@@ -30,8 +30,8 @@ import CreateAccountDialog from "../components/CreateAccountDialog";
 import ContextHeader from "../components/ContextHeader";
 import AccountSwitcher from "../components/AccountSwitcher";
 import DateSwitcher from "../components/DateSwitcher";
-import AddTransactionDialog from "../components/AddTransactionDialog";
 import AddBudgetDialog from "../components/AddBudgetDialog";
+import TransactionEntryDialog from "../components/TransactionEntryDialog";
 
 import { useAccount } from "../context/AccountContext";
 
@@ -182,7 +182,7 @@ export default function DashboardLayout() {
         onSuccess={(id) => switchAccount(id)}
       />
 
-      <AddTransactionDialog
+      <TransactionEntryDialog
         open={manualDialogOpen}
         onClose={() => setManualDialogOpen(false)}
         currentAccount={currentAccount}
