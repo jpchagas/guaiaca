@@ -55,7 +55,7 @@ class ErrorBoundary extends React.Component {
     if (this.state.hasError) {
       return (
         <Box sx={{ p: 3 }}>
-          Something went wrong. Please reload the app.
+          Algo deu errado. Recarregue o aplicativo.
         </Box>
       );
     }

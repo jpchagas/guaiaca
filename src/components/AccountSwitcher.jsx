@@ -3,12 +3,21 @@ import {
   Typography,
   CircularProgress,
   Drawer,
-  Divider,
   Button,
+  ButtonBase,
 } from "@mui/material";
-import { useMemo } from "react";
+import { alpha } from "@mui/material/styles";
+import {
+  PersonOutline,
+  GroupsOutlined,
+  CheckCircle,
+  Add,
+} from "@mui/icons-material";
 
 import { useAccount } from "../context/AccountContext";
+import { useDate } from "../context/DateContext";
+import { MONTHS } from "../utils/format";
+import Money from "./ui/Money";
 
 export default function AccountSwitcher({
   accounts = [],
@@ -16,105 +25,111 @@ export default function AccountSwitcher({
   onChange,
   onCreateAccount,
   loading = false,
-  open,        // ✅ controlled
-  onClose,     // ✅ controlled
+  open,
+  onClose,
 }) {
   const { balancesByAccountId } = useAccount();
-
-  const currentAccount = useMemo(
-    () =>
-      Array.isArray(accounts)
-        ? accounts.find((acc) => acc.id === currentAccountId)
-        : null,
-    [accounts, currentAccountId]
-  );
+  const { selectedMonth } = useDate();
 
   const handleSelect = (accountId) => {
     if (accountId && accountId !== currentAccountId) {
       onChange(accountId);
     }
-    onClose(); // ✅ close drawer
-  };
-
-  const getColor = (value) => {
-    if (value > 0) return "success.main";
-    if (value < 0) return "error.main";
-    return "text.secondary";
+    onClose();
   };
 
   return (
-    <Drawer
-      anchor="bottom"
-      open={open}
-      onClose={onClose}
-      PaperProps={{
-        sx: {
-          borderTopLeftRadius: 16,
-          borderTopRightRadius: 16,
-          pb: 2,
-        },
-      }}
-    >
-      <Box sx={{ p: 2 }}>
-        <Typography variant="subtitle1" fontWeight={600} mb={1}>
-          Select Account
+    <Drawer anchor="bottom" open={open} onClose={onClose}>
+      <Box sx={{ maxWidth: 600, width: "100%", mx: "auto", px: 2.5, pt: 1.25, pb: "calc(24px + env(safe-area-inset-bottom))" }}>
+        <Box sx={{ width: 40, height: 4, borderRadius: 2, bgcolor: "divider", mx: "auto", mb: 2 }} />
+
+        <Typography variant="h6" fontWeight={700}>
+          Suas contas
+        </Typography>
+        <Typography variant="body2" color="text.secondary" mb={2}>
+          Saldo de {MONTHS[selectedMonth].toLowerCase()}
         </Typography>
 
         {loading ? (
-          <CircularProgress />
+          <Box display="flex" justifyContent="center" py={3}>
+            <CircularProgress size={24} />
+          </Box>
         ) : (
           <Box display="flex" flexDirection="column" gap={1}>
             {accounts.map((acc) => {
               const selected = acc.id === currentAccountId;
-              const balance =
-                balancesByAccountId[acc.id]?.balance || 0;
+              const balance = balancesByAccountId[acc.id]?.balance || 0;
+              const isPersonal = acc.type === "personal";
+              const Icon = isPersonal ? PersonOutline : GroupsOutlined;
+              const memberCount = acc.members?.length || 1;
 
               return (
-                <Box
+                <ButtonBase
                   key={acc.id}
                   onClick={() => handleSelect(acc.id)}
-                  sx={{
+                  sx={(theme) => ({
                     p: 1.5,
-                    borderRadius: 2,
-                    cursor: "pointer",
+                    borderRadius: 3,
                     display: "flex",
-                    justifyContent: "space-between",
                     alignItems: "center",
-                    backgroundColor: selected
-                      ? "rgba(0,0,0,0.06)"
-                      : "transparent",
-                    borderLeft: selected
-                      ? "3px solid #1976d2"
-                      : "3px solid transparent",
-                  }}
+                    gap: 1.5,
+                    textAlign: "left",
+                    border: "1px solid",
+                    borderColor: selected ? alpha(theme.palette.primary.main, 0.4) : "divider",
+                    backgroundColor: selected ? alpha(theme.palette.primary.main, 0.06) : "transparent",
+                  })}
                 >
-                  <Typography fontWeight={600}>
-                    {acc.name || "Unnamed"}
-                  </Typography>
-
-                  <Typography
-                    fontWeight={600}
-                    sx={{ color: getColor(balance) }}
+                  <Box
+                    sx={(theme) => ({
+                      width: 40,
+                      height: 40,
+                      borderRadius: "12px",
+                      display: "grid",
+                      placeItems: "center",
+                      color: "primary.main",
+                      backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                      flexShrink: 0,
+                    })}
                   >
-                    ${balance.toFixed(2)}
-                  </Typography>
-                </Box>
+                    <Icon fontSize="small" />
+                  </Box>
+
+                  <Box flex={1} minWidth={0}>
+                    <Typography fontWeight={600} noWrap>
+                      {acc.name || "Conta sem nome"}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {isPersonal
+                        ? "Pessoal"
+                        : `Compartilhada · ${memberCount} ${memberCount === 1 ? "membro" : "membros"}`}
+                    </Typography>
+                  </Box>
+
+                  <Money
+                    value={balance}
+                    fontWeight={600}
+                    variant="body2"
+                    sx={{ color: balance < 0 ? "error.main" : "text.primary" }}
+                  />
+
+                  {selected && <CheckCircle color="primary" sx={{ fontSize: 20 }} />}
+                </ButtonBase>
               );
             })}
           </Box>
         )}
 
-        <Divider sx={{ my: 2 }} />
-
         <Button
           fullWidth
           variant="outlined"
+          startIcon={<Add />}
+          sx={{ mt: 2 }}
           onClick={() => {
-            onClose(); // ✅ close first
+            onClose();
             onCreateAccount?.();
           }}
         >
-          + Create Account
+          Nova conta compartilhada
         </Button>
       </Box>
     </Drawer>

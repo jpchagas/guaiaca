@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  deleteField,
   doc,
   serverTimestamp,
   Timestamp,
@@ -86,6 +87,11 @@ export async function updateTransactionById({
     formData,
     currentAccountId,
   });
+
+  // updateDoc merges fields, so a removed installment must be deleted explicitly
+  if (!payload.installment) {
+    payload.installment = deleteField();
+  }
 
   return await updateDoc(
     doc(db, "transactions", transactionId),

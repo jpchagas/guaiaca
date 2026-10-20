@@ -3,27 +3,46 @@ import {
   Box,
   Typography,
   Paper,
+  Divider,
+  LinearProgress,
+  Chip,
 } from "@mui/material";
-
 import {
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
+  ArrowDownward,
+  ArrowUpward,
+  ShowChart,
+  ReceiptLongOutlined,
+  PieChartOutline,
+  PersonOutline,
+  GroupsOutlined,
+} from "@mui/icons-material";
+import { useNavigate, useOutletContext } from "react-router-dom";
+
+import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 
 import { useAccount } from "../context/AccountContext";
 import { useDate } from "../context/DateContext";
+import { useCategoryLookup } from "../hooks/useCategories";
 
 import AccountMembersBar from "../components/AccountMembersBar";
 import ShareAccountDialog from "../components/ShareAccountDialog";
+import SplitSummaryCard from "../components/SplitSummaryCard";
+import SplitSettingsDialog from "../components/SplitSettingsDialog";
 import ConfirmActionDialog from "../components/ConfirmActionDialog";
+import TransactionRow from "../components/TransactionRow";
+import Money from "../components/ui/Money";
+import CategoryAvatar from "../components/ui/CategoryAvatar";
+import EmptyState from "../components/ui/EmptyState";
+import SectionHeader from "../components/ui/SectionHeader";
 
 import { auth, db } from "../firebaseConfig";
 import { doc, updateDoc, arrayRemove } from "firebase/firestore";
 
-const COLORS = ["#2E7D32", "#66BB6A", "#FFB300", "#E0E0E0"];
+import { brand } from "../theme";
+import { getCategoryVisual } from "../utils/categoryVisuals";
+import { MONTHS, isInMonth, toDate, formatDayLabel } from "../utils/format";
+
+const TOP_CATEGORIES = 5;
 
 export default function Overview() {
   const {
@@ -34,20 +53,19 @@ export default function Overview() {
   } = useAccount();
 
   const { selectedMonth, selectedYear } = useDate();
+  const { byId: categoriesById } = useCategoryLookup();
+  const { openCreate } = useOutletContext();
+  const navigate = useNavigate();
   const currentUserId = auth.currentUser?.uid;
 
   const [shareOpen, setShareOpen] = useState(false);
-
-  // 🔥 CONFIRM DIALOG STATE
+  const [splitOpen, setSplitOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState(null);
   const [confirmConfig, setConfirmConfig] = useState({
     title: "",
     description: "",
   });
-
-  // ✅ DEBUG
-  console.log("Overview currentAccount:", currentAccount);
 
   const balanceData =
     balancesByAccountId[currentAccount?.id] || {
@@ -57,31 +75,26 @@ export default function Overview() {
       balance: 0,
     };
 
-  // 🔥 OPEN CONFIRM
+  /* -------------------- Members -------------------- */
+
   const handleRemoveMember = (memberId) => {
     if (!currentAccount?.id || !memberId) return;
 
     const isOwner = currentUserId === currentAccount.ownerId;
     const isSelf = memberId === currentUserId;
 
-    if (isOwner && isSelf) {
-      alert("Owner cannot leave the account");
-      return;
-    }
+    if (isOwner && isSelf) return;
 
     setSelectedMemberId(memberId);
-
     setConfirmConfig({
-      title: isSelf ? "Leave Account" : "Remove Member",
+      title: isSelf ? "Sair da conta" : "Remover membro",
       description: isSelf
-        ? "Are you sure you want to leave this account?"
-        : "Are you sure you want to remove this member?",
+        ? "Você deixará de ver as transações, orçamentos e metas desta conta."
+        : "Essa pessoa deixará de ter acesso às transações, orçamentos e metas desta conta.",
     });
-
     setConfirmOpen(true);
   };
 
-  // 🔥 CONFIRM ACTION
   const confirmRemoveMember = async () => {
     if (!selectedMemberId || !currentAccount?.id) return;
 
@@ -101,142 +114,309 @@ export default function Overview() {
     }
   };
 
-  // ✅ FILTER
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter((tx) => {
-      if (tx.accountId !== currentAccount?.id) return false;
-      if (!tx.date) return false;
+  /* -------------------- Derived data -------------------- */
 
-      const d =
-        typeof tx.date?.toDate === "function"
-          ? tx.date.toDate()
-          : new Date(tx.date);
-
-      return (
-        d.getMonth() === selectedMonth &&
-        d.getFullYear() === selectedYear
-      );
-    });
+  const monthTransactions = useMemo(() => {
+    return transactions
+      .filter(
+        (tx) =>
+          tx.accountId === currentAccount?.id &&
+          isInMonth(tx.date, selectedMonth, selectedYear)
+      )
+      .sort((a, b) => (toDate(b.date) || 0) - (toDate(a.date) || 0));
   }, [transactions, currentAccount, selectedMonth, selectedYear]);
 
-  // ✅ PIE
-  const pieData = useMemo(() => {
-    const expenseTransactions = filteredTransactions.filter(
-      (t) => t.classification === "expense"
-    );
+  const spending = useMemo(() => {
+    const totals = {};
 
-    const categoryTotals = expenseTransactions.reduce((acc, t) => {
-      const key = t.category || "Other";
-      acc[key] = (acc[key] || 0) + (Number(t.amount) || 0);
-      return acc;
-    }, {});
+    monthTransactions.forEach((t) => {
+      if (t.classification !== "expense") return;
+      const key = t.category || "__none__";
+      totals[key] = (totals[key] || 0) + (Number(t.amount) || 0);
+    });
 
-    return Object.entries(categoryTotals).map(([name, value]) => ({
-      name,
-      value,
-    }));
-  }, [filteredTransactions]);
+    const total = Object.values(totals).reduce((s, v) => s + v, 0);
+
+    const rows = Object.entries(totals)
+      .map(([id, value]) => {
+        const category = categoriesById[id];
+        return {
+          id,
+          category,
+          name: category?.name || "Sem categoria",
+          value,
+          color: getCategoryVisual(category).color,
+        };
+      })
+      .sort((a, b) => b.value - a.value);
+
+    if (rows.length > TOP_CATEGORIES) {
+      const rest = rows.slice(TOP_CATEGORIES - 1);
+      rows.splice(TOP_CATEGORIES - 1, rows.length, {
+        id: "__others__",
+        category: null,
+        name: `Outras (${rest.length})`,
+        value: rest.reduce((s, r) => s + r.value, 0),
+        color: "#A3ADA8",
+      });
+    }
+
+    return { rows, total };
+  }, [monthTransactions, categoriesById]);
+
+  const recent = monthTransactions.slice(0, 5);
 
   if (!currentAccount?.id) {
     return (
-      <Box textAlign="center" mt={6}>
-        <Typography color="text.secondary">
-          Select or create an account
-        </Typography>
-      </Box>
+      <EmptyState
+        icon={PersonOutline}
+        title="Nenhuma conta selecionada"
+        description="Selecione ou crie uma conta no topo da tela para começar."
+      />
     );
   }
 
+  const isShared = currentAccount.type !== "personal";
+  const monthName = MONTHS[selectedMonth].toLowerCase();
+
   return (
-    <Box>
-
-      {/* 👥 MEMBERS */}
-      <AccountMembersBar
-        members={members}
-        account={currentAccount}
-        currentUserId={currentUserId}
-        onAddClick={() => setShareOpen(true)}
-        onRemoveMember={handleRemoveMember}
-      />
-
-      {/* ➕ SHARE */}
-      <ShareAccountDialog
-        open={shareOpen}
-        onClose={() => setShareOpen(false)}
-        account={currentAccount} // ✅ FIXED
-      />
-
-      {/* 💰 BALANCE */}
+    <Box display="flex" flexDirection="column" gap={3}>
+      {/* 💰 HERO BALANCE */}
       <Paper
         sx={{
           p: 3,
-          mb: 3,
-          backgroundColor: "primary.main",
-          color: "white",
-          borderRadius: 4,
+          borderRadius: "24px",
+          color: "#fff",
+          background: brand.heroGradient,
+          boxShadow: "0 18px 40px rgba(13, 31, 24, 0.28)",
+          overflow: "hidden",
         }}
       >
-        <Typography variant="body2" sx={{ opacity: 0.8 }}>
-          Total Balance
-        </Typography>
+        <Box display="flex" alignItems="center" justifyContent="space-between" mb={0.5}>
+          <Typography variant="body2" sx={{ opacity: 0.75 }}>
+            Saldo de {monthName}
+          </Typography>
 
-        <Typography variant="h4" fontWeight={700}>
-          ${balanceData.balance.toFixed(2)}
-        </Typography>
-      </Paper>
+          <Chip
+            size="small"
+            icon={isShared ? <GroupsOutlined /> : <PersonOutline />}
+            label={isShared ? "Compartilhada" : "Pessoal"}
+            sx={{
+              color: "#fff",
+              backgroundColor: "rgba(255,255,255,0.12)",
+              "& .MuiChip-icon": { color: "rgba(255,255,255,0.85)" },
+            }}
+          />
+        </Box>
 
-      {/* 📊 SUMMARY */}
-      <Box sx={{ display: "flex", gap: 2, overflowX: "auto", pb: 1 }}>
-        {[
-          { label: "Income", value: balanceData.income, color: "success.main" },
-          { label: "Expenses", value: balanceData.expenses, color: "error.main" },
-          { label: "Investments", value: balanceData.investments, color: "warning.main" },
-        ].map((item) => (
-          <Paper key={item.label} sx={{ p: 2, minWidth: 140, borderRadius: 3 }}>
-            <Typography variant="body2" color="text.secondary">
-              {item.label}
-            </Typography>
+        <Money
+          value={balanceData.balance}
+          component="div"
+          sx={{ fontSize: { xs: 34, sm: 40 }, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.2 }}
+        />
 
-            <Typography
-              variant="h6"
-              fontWeight={600}
-              sx={{ color: item.color }}
-            >
-              ${item.value.toFixed(2)}
-            </Typography>
-          </Paper>
-        ))}
-      </Box>
+        <Divider sx={{ borderColor: "rgba(255,255,255,0.14)", my: 2.5 }} />
 
-      {/* 🥧 CHART */}
-      <Paper sx={{ p: 2, mt: 3 }}>
-        <Typography variant="subtitle1" mb={2}>
-          Spending by Category
-        </Typography>
-
-        <Box sx={{ height: 280 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie data={pieData} dataKey="value" outerRadius={90}>
-                {pieData.map((entry, index) => (
-                  <Cell key={index} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
+        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1 }}>
+          {[
+            { label: "Receitas", value: balanceData.income, Icon: ArrowDownward, tint: "#7EE0B0" },
+            { label: "Despesas", value: balanceData.expenses, Icon: ArrowUpward, tint: "#F4A39C" },
+            { label: "Investido", value: balanceData.investments, Icon: ShowChart, tint: "#E9C77E" },
+          ].map((stat) => {
+            const { label, value, tint, Icon } = stat;
+            return (
+            <Box key={label} minWidth={0}>
+              <Box display="flex" alignItems="center" gap={0.5} mb={0.25}>
+                <Icon sx={{ fontSize: 14, color: tint }} />
+                <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                  {label}
+                </Typography>
+              </Box>
+              <Money
+                value={value}
+                component="div"
+                variant="body2"
+                fontWeight={600}
+                sx={{ overflow: "hidden", textOverflow: "ellipsis" }}
+              />
+            </Box>
+            );
+          })}
         </Box>
       </Paper>
 
-      {/* 🔥 CONFIRM DIALOG */}
+      {/* 👥 MEMBERS */}
+      {isShared && (
+        <AccountMembersBar
+          members={members}
+          account={currentAccount}
+          currentUserId={currentUserId}
+          onAddClick={() => setShareOpen(true)}
+          onRemoveMember={handleRemoveMember}
+        />
+      )}
+
+      {/* ⚖️ SPLIT */}
+      {isShared && (
+        <SplitSummaryCard
+          account={currentAccount}
+          members={members}
+          monthTransactions={monthTransactions}
+          currentUserId={currentUserId}
+          onEdit={() => setSplitOpen(true)}
+        />
+      )}
+
+      {/* 🥧 SPENDING */}
+      <Box>
+        <SectionHeader title="Para onde foi o dinheiro" />
+
+        <Paper variant="outlined" sx={{ p: 2.5 }}>
+          {spending.rows.length === 0 ? (
+            <EmptyState
+              compact
+              icon={PieChartOutline}
+              title="Sem despesas neste mês"
+              description="Quando você registrar despesas, mostraremos aqui como elas se dividem por categoria."
+            />
+          ) : (
+            <>
+              <Box sx={{ position: "relative", height: 180, mb: 2 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={spending.rows}
+                      dataKey="value"
+                      innerRadius={62}
+                      outerRadius={84}
+                      paddingAngle={2}
+                      stroke="none"
+                      startAngle={90}
+                      endAngle={-270}
+                      isAnimationActive={false}
+                    >
+                      {spending.rows.map((row) => (
+                        <Cell key={row.id} fill={row.color} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+
+                <Box
+                  sx={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    pointerEvents: "none",
+                  }}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    Total gasto
+                  </Typography>
+                  <Money value={spending.total} fontWeight={700} variant="subtitle1" />
+                </Box>
+              </Box>
+
+              <Box display="flex" flexDirection="column" gap={1.75}>
+                {spending.rows.map((row) => {
+                  const pct = spending.total ? (row.value / spending.total) * 100 : 0;
+                  return (
+                    <Box key={row.id} display="flex" alignItems="center" gap={1.5}>
+                      <CategoryAvatar category={row.category} size={34} />
+                      <Box flex={1} minWidth={0}>
+                        <Box display="flex" justifyContent="space-between" gap={1} mb={0.5}>
+                          <Typography variant="body2" fontWeight={600} noWrap>
+                            {row.name}
+                          </Typography>
+                          <Money value={row.value} variant="body2" fontWeight={600} />
+                        </Box>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <LinearProgress
+                            variant="determinate"
+                            value={pct}
+                            sx={{
+                              flex: 1,
+                              height: 6,
+                              "& .MuiLinearProgress-bar": { backgroundColor: row.color },
+                            }}
+                          />
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ width: 34, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+                          >
+                            {Math.round(pct)}%
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </>
+          )}
+        </Paper>
+      </Box>
+
+      {/* 🧾 RECENT */}
+      <Box>
+        <SectionHeader
+          title="Atividade recente"
+          actionLabel={monthTransactions.length > 0 ? "Ver todas" : undefined}
+          onAction={() => navigate("/dashboard/transactions")}
+        />
+
+        <Paper variant="outlined" sx={{ overflow: "hidden" }}>
+          {recent.length === 0 ? (
+            <EmptyState
+              compact
+              icon={ReceiptLongOutlined}
+              title={`Nada registrado em ${monthName}`}
+              description="Adicione sua primeira transação do mês para acompanhar seu saldo."
+              actionLabel="Adicionar transação"
+              onAction={() => openCreate("transaction")}
+            />
+          ) : (
+            recent.map((tx, i) => (
+              <Box key={tx.id}>
+                {i > 0 && <Divider sx={{ ml: 9 }} />}
+                <TransactionRow
+                  tx={tx}
+                  category={categoriesById[tx.category]}
+                  showDate={formatDayLabel(tx.date)}
+                  onClick={() => navigate("/dashboard/transactions")}
+                />
+              </Box>
+            ))
+          )}
+        </Paper>
+      </Box>
+
+      <ShareAccountDialog
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        account={currentAccount}
+      />
+
+      <SplitSettingsDialog
+        open={splitOpen}
+        onClose={() => setSplitOpen(false)}
+        account={currentAccount}
+        members={members}
+        monthTransactions={monthTransactions}
+        currentUserId={currentUserId}
+      />
+
       <ConfirmActionDialog
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         onConfirm={confirmRemoveMember}
         title={confirmConfig.title}
         description={confirmConfig.description}
-        confirmText="Confirm"
-        cancelText="Cancel"
+        confirmText={selectedMemberId === currentUserId ? "Sair da conta" : "Remover"}
       />
     </Box>
   );

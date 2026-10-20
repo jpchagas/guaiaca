@@ -1,9 +1,7 @@
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
+  Box,
   Button,
+  Dialog,
   Typography,
 } from "@mui/material";
 
@@ -13,35 +11,38 @@ export default function ConfirmActionDialog({
   onConfirm,
   title,
   description,
-  confirmText = "Confirm",
-  cancelText = "Cancel",
+  confirmText = "Confirmar",
+  cancelText = "Cancelar",
   confirmColor = "error",
   loading = false,
 }) {
   return (
-    <Dialog open={open} onClose={onClose}>
-      <DialogTitle>{title}</DialogTitle>
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h6" fontWeight={700} mb={1}>
+          {title}
+        </Typography>
 
-      <DialogContent>
-        <Typography variant="body2">
+        <Typography variant="body2" color="text.secondary">
           {description}
         </Typography>
-      </DialogContent>
 
-      <DialogActions>
-        <Button onClick={onClose} disabled={loading}>
-          {cancelText}
-        </Button>
+        <Box display="flex" gap={1.5} mt={3}>
+          <Button fullWidth variant="outlined" onClick={onClose} disabled={loading}>
+            {cancelText}
+          </Button>
 
-        <Button
-          variant="contained"
-          color={confirmColor}
-          onClick={onConfirm}
-          disabled={loading}
-        >
-          {confirmText}
-        </Button>
-      </DialogActions>
+          <Button
+            fullWidth
+            variant="contained"
+            color={confirmColor}
+            onClick={onConfirm}
+            disabled={loading}
+          >
+            {confirmText}
+          </Button>
+        </Box>
+      </Box>
     </Dialog>
   );
 }

@@ -5,29 +5,30 @@ import {
   CircularProgress,
   LinearProgress,
   Paper,
-  Stack,
   Divider,
 } from "@mui/material";
+import { DonutLargeOutlined, PersonOutline } from "@mui/icons-material";
+import { useOutletContext } from "react-router-dom";
 
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 
 import { useAccount } from "../context/AccountContext";
 import { useDate } from "../context/DateContext";
+import { useCategoryLookup } from "../hooks/useCategories";
+
+import Money from "../components/ui/Money";
+import CategoryAvatar from "../components/ui/CategoryAvatar";
+import EmptyState from "../components/ui/EmptyState";
+import SectionHeader from "../components/ui/SectionHeader";
+import { MONTHS, formatCurrency, isInMonth } from "../utils/format";
 
 /* -------------------- Helpers -------------------- */
 
 const getProgressColor = (percentage) => {
-  if (percentage < 70) return "primary";
+  if (percentage < 75) return "primary";
   if (percentage < 100) return "warning";
   return "error";
-};
-
-const formatCurrency = (value) => {
-  return value.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
 };
 
 /* -------------------- Component -------------------- */
@@ -35,13 +36,20 @@ const formatCurrency = (value) => {
 export default function Budget() {
   const { currentAccount, transactions, loading } = useAccount();
   const { selectedMonth, selectedYear } = useDate();
+  const { byId: categoriesById } = useCategoryLookup();
+  const { openCreate } = useOutletContext();
 
   const [budgets, setBudgets] = useState([]);
   const [budgetsLoading, setBudgetsLoading] = useState(true);
 
   /* -------------------- Load Budgets -------------------- */
   useEffect(() => {
-    if (!currentAccount?.id) return;
+    if (!currentAccount?.id) {
+      setBudgetsLoading(false);
+      return;
+    }
+
+    setBudgetsLoading(true);
 
     const q = query(
       collection(db, "budgets"),
@@ -49,12 +57,7 @@ export default function Budget() {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-
-      setBudgets(data);
+      setBudgets(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
       setBudgetsLoading(false);
     });
 
@@ -66,130 +69,170 @@ export default function Budget() {
     const result = {};
 
     transactions.forEach((t) => {
+      if (t.accountId !== currentAccount?.id) return;
       if (t.classification !== "expense") return;
-
-      const date = t.date?.toDate?.();
-      if (!date) return;
-
-      const month = date.getMonth() + 1;
-      const year = date.getFullYear();
-
-      if (month !== selectedMonth || year !== selectedYear) return;
+      if (!isInMonth(t.date, selectedMonth, selectedYear)) return;
 
       const category = t.category || "uncategorized";
-
-      result[category] = (result[category] || 0) + t.amount;
+      result[category] = (result[category] || 0) + (Number(t.amount) || 0);
     });
 
     return result;
-  }, [transactions, selectedMonth, selectedYear]);
+  }, [transactions, currentAccount?.id, selectedMonth, selectedYear]);
+
+  const rows = useMemo(() => {
+    return budgets
+      .map((budget) => {
+        const limit = Number(budget.limit) || 0;
+        const spent = spendingByCategory[budget.category] || 0;
+        const percentage = limit ? (spent / limit) * 100 : 0;
+        return { ...budget, limit, spent, percentage, remaining: limit - spent };
+      })
+      .sort((a, b) => b.percentage - a.percentage);
+  }, [budgets, spendingByCategory]);
+
+  const summary = useMemo(() => {
+    const limit = rows.reduce((s, r) => s + r.limit, 0);
+    const spent = rows.reduce((s, r) => s + r.spent, 0);
+    return {
+      limit,
+      spent,
+      percentage: limit ? (spent / limit) * 100 : 0,
+      over: rows.filter((r) => r.percentage >= 100).length,
+    };
+  }, [rows]);
 
   /* -------------------- Loading -------------------- */
   if (loading || budgetsLoading) {
     return (
-      <Box display="flex" justifyContent="center" mt={6}>
-        <CircularProgress />
+      <Box display="flex" justifyContent="center" mt={8}>
+        <CircularProgress size={28} />
       </Box>
     );
   }
 
-  /* -------------------- No Account -------------------- */
   if (!currentAccount?.id) {
     return (
-      <Box textAlign="center" mt={8}>
-        <Typography color="text.secondary">
-          Select an account to view budgets
-        </Typography>
-      </Box>
+      <EmptyState
+        icon={PersonOutline}
+        title="Nenhuma conta selecionada"
+        description="Selecione uma conta para ver os orçamentos."
+      />
     );
   }
 
-  /* -------------------- No Budgets -------------------- */
   if (!budgets.length) {
     return (
-      <Box textAlign="center" mt={8}>
-        <Typography variant="h6" gutterBottom>
-          No budgets yet
-        </Typography>
-
-        <Typography color="text.secondary">
-          Create budgets to track your spending by category
-        </Typography>
-      </Box>
+      <Paper variant="outlined">
+        <EmptyState
+          icon={DonutLargeOutlined}
+          title="Defina seus limites de gasto"
+          description="Crie orçamentos mensais por categoria e acompanhe quanto ainda pode gastar."
+          actionLabel="Criar orçamento"
+          onAction={() => openCreate("budget")}
+        />
+      </Paper>
     );
   }
 
-  /* -------------------- Sorted Budgets -------------------- */
-  const sortedBudgets = [...budgets].sort((a, b) => {
-    const spentA = spendingByCategory[a.category] || 0;
-    const spentB = spendingByCategory[b.category] || 0;
-
-    const percA = (spentA / a.limit) * 100;
-    const percB = (spentB / b.limit) * 100;
-
-    return percB - percA;
-  });
+  const remaining = summary.limit - summary.spent;
 
   /* -------------------- UI -------------------- */
   return (
-    <Box sx={{ p: 2 }}>
-      <Typography variant="h5" gutterBottom>
-        Budget
-      </Typography>
+    <Box display="flex" flexDirection="column" gap={3}>
+      {/* SUMMARY */}
+      <Paper variant="outlined" sx={{ p: 2.5 }}>
+        <Typography variant="body2" color="text.secondary">
+          Gasto em {MONTHS[selectedMonth].toLowerCase()}
+        </Typography>
 
-      <Stack spacing={2}>
-        {sortedBudgets.map((budget, i) => {
-          const spent = spendingByCategory[budget.category] || 0;
-          const remaining = budget.limit - spent;
-          const percentage = Math.min((spent / budget.limit) * 100, 100);
+        <Box display="flex" alignItems="baseline" gap={1} mt={0.25} mb={1.5} flexWrap="wrap">
+          <Money value={summary.spent} sx={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em" }} />
+          <Typography variant="body2" color="text.secondary">
+            de {formatCurrency(summary.limit)}
+          </Typography>
+        </Box>
 
-          return (
-            <Paper key={budget.id} sx={{ p: 2 }}>
-              <Stack spacing={1}>
-                {/* Header */}
-                <Box display="flex" justifyContent="space-between">
-                  <Typography fontWeight={600}>
-                    {budget.category}
-                  </Typography>
+        <LinearProgress
+          variant="determinate"
+          value={Math.min(summary.percentage, 100)}
+          color={getProgressColor(summary.percentage)}
+          sx={{ height: 10 }}
+        />
 
-                  <Typography variant="body2" color="text.secondary">
-                    {Math.round(percentage)}%
-                  </Typography>
+        <Box display="flex" justifyContent="space-between" mt={1.25}>
+          <Typography variant="caption" color={remaining < 0 ? "error" : "text.secondary"} fontWeight={600}>
+            {remaining >= 0
+              ? `Disponível: ${formatCurrency(remaining)}`
+              : `Acima do planejado: ${formatCurrency(Math.abs(remaining))}`}
+          </Typography>
+          {summary.over > 0 && (
+            <Typography variant="caption" color="error" fontWeight={600}>
+              {summary.over} {summary.over === 1 ? "categoria estourada" : "categorias estouradas"}
+            </Typography>
+          )}
+        </Box>
+      </Paper>
+
+      {/* LIST */}
+      <Box>
+        <SectionHeader title="Por categoria" />
+
+        <Paper variant="outlined" sx={{ overflow: "hidden" }}>
+          {rows.map((budget, i) => {
+            const category = categoriesById[budget.category];
+            const color = getProgressColor(budget.percentage);
+
+            return (
+              <Box key={budget.id}>
+                {i > 0 && <Divider />}
+                <Box sx={{ p: 2, display: "flex", gap: 1.5 }}>
+                  <CategoryAvatar category={category} />
+
+                  <Box flex={1} minWidth={0}>
+                    <Box display="flex" justifyContent="space-between" alignItems="baseline" gap={1}>
+                      <Typography fontWeight={600} noWrap>
+                        {category?.name || "Categoria removida"}
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        fontWeight={700}
+                        color={color === "primary" ? "text.secondary" : `${color}.main`}
+                        sx={{ fontVariantNumeric: "tabular-nums" }}
+                      >
+                        {Math.round(budget.percentage)}%
+                      </Typography>
+                    </Box>
+
+                    <LinearProgress
+                      variant="determinate"
+                      value={Math.min(budget.percentage, 100)}
+                      color={color}
+                      sx={{ my: 1 }}
+                    />
+
+                    <Box display="flex" justifyContent="space-between" gap={1}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: "tabular-nums" }}>
+                        {formatCurrency(budget.spent)} de {formatCurrency(budget.limit)}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        fontWeight={600}
+                        color={budget.remaining < 0 ? "error" : "text.secondary"}
+                        sx={{ fontVariantNumeric: "tabular-nums" }}
+                      >
+                        {budget.remaining >= 0
+                          ? `Restam ${formatCurrency(budget.remaining)}`
+                          : `+${formatCurrency(Math.abs(budget.remaining))}`}
+                      </Typography>
+                    </Box>
+                  </Box>
                 </Box>
-
-                {/* Progress */}
-                <LinearProgress
-                  variant="determinate"
-                  value={percentage}
-                  color={getProgressColor(percentage)}
-                  sx={{ height: 8, borderRadius: 4 }}
-                />
-
-                {/* Values */}
-                <Box display="flex" justifyContent="space-between">
-                  <Typography variant="body2">
-                    {formatCurrency(spent)}
-                  </Typography>
-
-                  <Typography variant="body2" color="text.secondary">
-                    {formatCurrency(budget.limit)}
-                  </Typography>
-                </Box>
-
-                {/* Remaining */}
-                <Typography
-                  variant="caption"
-                  color={remaining < 0 ? "error" : "text.secondary"}
-                >
-                  {remaining >= 0
-                    ? `Remaining: ${formatCurrency(remaining)}`
-                    : `Exceeded by ${formatCurrency(Math.abs(remaining))}`}
-                </Typography>
-              </Stack>
-            </Paper>
-          );
-        })}
-      </Stack>
+              </Box>
+            );
+          })}
+        </Paper>
+      </Box>
     </Box>
   );
 }

@@ -1,15 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Box, ToggleButton, ToggleButtonGroup } from "@mui/material";
+import { EditNoteOutlined, UploadFileOutlined } from "@mui/icons-material";
 
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  ToggleButton,
-  ToggleButtonGroup,
-  Box,
-} from "@mui/material";
-
-import ManualTransactionForm from "./ManualTransactionForm"
+import Sheet from "./ui/Sheet";
+import ManualTransactionForm from "./ManualTransactionForm";
 import ImportTransactionsFlow from "./ImportTransactionsFlow";
 
 export default function TransactionEntryDialog({
@@ -20,80 +14,76 @@ export default function TransactionEntryDialog({
   currentUserId,
   initialData = null,
   mode = "create",
+  onDelete,
 }) {
   const isEdit = mode === "edit";
+  const [entryMode, setEntryMode] = useState("manual");
 
-  // Edit mode should ALWAYS stay manual
-  const [entryMode, setEntryMode] = useState(
-    isEdit ? "manual" : "manual"
-  );
-
-  const handleModeChange = (_, value) => {
-    if (!value) return;
-
-    // Prevent switching modes while editing
-    if (isEdit) return;
-
-    setEntryMode(value);
-  };
+  // Always reopen on the manual form
+  useEffect(() => {
+    if (open) setEntryMode("manual");
+  }, [open]);
 
   return (
-    <Dialog
+    <Sheet
       open={open}
       onClose={onClose}
-      fullWidth
-      maxWidth="sm"
+      title={isEdit ? "Editar transação" : "Nova transação"}
+      subtitle={currentAccount?.name ? `Conta: ${currentAccount.name}` : undefined}
     >
-      <DialogTitle>
-        {isEdit ? "Edit Transaction" : "Add Transactions"}
-      </DialogTitle>
+      {!isEdit && (
+        <ToggleButtonGroup
+          value={entryMode}
+          exclusive
+          onChange={(_, value) => value && setEntryMode(value)}
+          fullWidth
+          size="small"
+          sx={{
+            mb: 2.5,
+            p: 0.5,
+            gap: 0.5,
+            borderRadius: 3,
+            bgcolor: "rgba(13,31,24,0.05)",
+            "& .MuiToggleButton-root": {
+              border: 0,
+              borderRadius: "10px !important",
+              py: 0.9,
+              gap: 0.75,
+              color: "text.secondary",
+            },
+            "& .Mui-selected": {
+              bgcolor: "background.paper !important",
+              color: "text.primary !important",
+              boxShadow: "0 1px 3px rgba(13,31,24,0.12)",
+            },
+          }}
+        >
+          <ToggleButton value="manual">
+            <EditNoteOutlined fontSize="small" /> Manual
+          </ToggleButton>
+          <ToggleButton value="import">
+            <UploadFileOutlined fontSize="small" /> Importar extrato
+          </ToggleButton>
+        </ToggleButtonGroup>
+      )}
 
-      <DialogContent
-        sx={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 3,
-          pt: 2,
-        }}
-      >
-        {!isEdit && (
-          <ToggleButtonGroup
-            value={entryMode}
-            exclusive
-            onChange={handleModeChange}
-            fullWidth
-            size="small"
-          >
-            <ToggleButton value="manual">
-              Manual
-            </ToggleButton>
-
-            <ToggleButton value="import">
-              Import File
-            </ToggleButton>
-          </ToggleButtonGroup>
+      <Box>
+        {entryMode === "manual" && (
+          <ManualTransactionForm
+            onClose={onClose}
+            currentAccount={currentAccount}
+            members={members}
+            currentUserId={currentUserId}
+            initialData={initialData}
+            mode={mode}
+            onDelete={onDelete}
+          />
         )}
 
-        <Box>
-          {entryMode === "manual" && (
-            <ManualTransactionForm
-              onClose={onClose}
-              currentAccount={currentAccount}
-              members={members}
-              currentUserId={currentUserId}
-              initialData={initialData}
-              mode={mode}
-            />
-          )}
-
-          {entryMode === "import" && (
-            <ImportTransactionsFlow
-              currentAccount={currentAccount}
-              onClose={onClose}
-            />
-          )}
-        </Box>
-      </DialogContent>
-    </Dialog>
+        {entryMode === "import" && (
+          <ImportTransactionsFlow />
+        )}
+      </Box>
+    </Sheet>
   );
 }

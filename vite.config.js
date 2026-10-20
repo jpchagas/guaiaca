@@ -11,11 +11,12 @@ export default defineConfig({
       manifest: {
         name: 'Guaiaca',
         short_name: 'Guaiaca',
-        description: 'Manage shared budgets, goals, and spending as a couple.',
+        description: 'Finanças pessoais e compartilhadas: transações, orçamentos e metas.',
+        lang: 'pt-BR',
         start_url: '/',
         display: 'standalone',
-        background_color: '#ffffff',
-        theme_color: '#4CAF50',
+        background_color: '#F5F4EF',
+        theme_color: '#0D1F18',
         orientation: 'portrait',
         icons: [
           {

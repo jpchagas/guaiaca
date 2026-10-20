@@ -1,14 +1,13 @@
 import { useState } from "react";
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Button,
   Alert,
+  Box,
+  Button,
+  Stack,
+  TextField,
   Typography,
 } from "@mui/material";
+import { InfoOutlined } from "@mui/icons-material";
 
 import { db, auth } from "../firebaseConfig";
 import {
@@ -20,6 +19,7 @@ import {
   updateDoc,
   arrayUnion,
 } from "firebase/firestore";
+import Sheet from "./ui/Sheet";
 
 export default function ShareAccountDialog({ open, onClose, account }) {
   const [email, setEmail] = useState("");
@@ -28,138 +28,128 @@ export default function ShareAccountDialog({ open, onClose, account }) {
   const [loading, setLoading] = useState(false);
 
   const currentUserId = auth.currentUser?.uid;
-
-  // ✅ DEBUG
-  console.log("ShareDialog account:", account);
-
-  // ✅ DERIVED
   const isOwner = account?.ownerId === currentUserId;
   const isSharedAccount = account?.type === "shared";
+  const canShare = !!account?.id && isOwner && isSharedAccount;
+
+  const handleClose = () => {
+    if (loading) return;
+    setEmail("");
+    setError("");
+    setSuccess("");
+    onClose();
+  };
 
   const handleShare = async () => {
     setError("");
     setSuccess("");
 
-    // ✅ BASIC GUARD
-    if (!email || !account?.id) return;
-
-    // 🔒 TYPE PROTECTION
-    if (!isSharedAccount) {
-      setError("This account cannot be shared.");
-      return;
-    }
-
-    // 🔒 OWNER PROTECTION
-    if (!isOwner) {
-      setError("Only the owner can share this account.");
-      return;
-    }
+    if (!email || !canShare) return;
 
     setLoading(true);
 
     try {
       const trimmedEmail = email.trim().toLowerCase();
 
-      const q = query(
-        collection(db, "users"),
-        where("email", "==", trimmedEmail)
+      const snap = await getDocs(
+        query(collection(db, "users"), where("email", "==", trimmedEmail))
       );
 
-      const snap = await getDocs(q);
-
       if (snap.empty) {
-        setError("User not found");
-        setLoading(false);
+        setError("Não encontramos ninguém com esse e-mail no Guaiaca. Peça para a pessoa criar uma conta primeiro.");
         return;
       }
 
       const userId = snap.docs[0].id;
 
-      // Optional UX guard
       if (userId === currentUserId) {
-        setError("You already have access to this account.");
-        setLoading(false);
+        setError("Você já tem acesso a esta conta.");
         return;
       }
 
-      // Optional: prevent duplicate add (extra safety)
       if (account.members?.includes(userId)) {
-        setError("User already has access.");
-        setLoading(false);
+        setError("Essa pessoa já é membro desta conta.");
         return;
       }
 
-      // ✅ FIRESTORE UPDATE
       await updateDoc(doc(db, "accounts", account.id), {
         members: arrayUnion(userId),
       });
 
-      setSuccess("User added!");
+      setSuccess(`${trimmedEmail} agora tem acesso a esta conta.`);
       setEmail("");
     } catch (err) {
       console.error(err);
-      setError("Error sharing account");
+      setError("Não foi possível convidar. Tente novamente.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onClose={onClose}>
-      <DialogTitle>Share Account</DialogTitle>
-
-      <DialogContent>
+    <Sheet
+      open={open}
+      onClose={handleClose}
+      title="Convidar membro"
+      subtitle={account?.name ? `Conta: ${account.name}` : undefined}
+      actions={
+        canShare ? (
+          <Button
+            variant="contained"
+            size="large"
+            fullWidth
+            onClick={handleShare}
+            disabled={loading || !email.trim()}
+          >
+            {loading ? "Convidando…" : "Dar acesso"}
+          </Button>
+        ) : null
+      }
+    >
+      <Stack spacing={2}>
         {!account?.id ? (
-          <Typography color="text.secondary">
-            Loading account...
-          </Typography>
+          <Typography color="text.secondary">Carregando conta…</Typography>
         ) : !isSharedAccount ? (
           <Typography color="text.secondary">
-            This is a personal account and cannot be shared.
+            Contas pessoais não podem ser compartilhadas. Crie uma conta compartilhada para convidar pessoas.
           </Typography>
         ) : !isOwner ? (
           <Typography color="text.secondary">
-            Only the owner can share this account.
+            Apenas o titular pode convidar novos membros.
           </Typography>
         ) : (
-          <TextField
-            fullWidth
-            label="User Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            margin="normal"
-            disabled={loading}
-          />
+          <>
+            <TextField
+              label="E-mail da pessoa"
+              type="email"
+              autoFocus
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleShare()}
+              disabled={loading}
+            />
+
+            <Box
+              sx={{
+                display: "flex",
+                gap: 1.25,
+                p: 1.5,
+                borderRadius: 3,
+                bgcolor: "rgba(13,31,24,0.04)",
+              }}
+            >
+              <InfoOutlined sx={{ fontSize: 18, color: "text.secondary", mt: 0.25 }} />
+              <Typography variant="caption" color="text.secondary">
+                Membros podem ver e registrar transações, orçamentos e metas desta conta.
+                Você pode remover o acesso a qualquer momento.
+              </Typography>
+            </Box>
+          </>
         )}
 
-        {error && (
-          <Alert severity="error" sx={{ mt: 1 }}>
-            {error}
-          </Alert>
-        )}
-
-        {success && (
-          <Alert severity="success" sx={{ mt: 1 }}>
-            {success}
-          </Alert>
-        )}
-      </DialogContent>
-
-      <DialogActions>
-        <Button onClick={onClose} disabled={loading}>
-          Cancel
-        </Button>
-
-        {isOwner && isSharedAccount && (
-          <Button
-            variant="contained"
-            onClick={handleShare}
-            disabled={loading || !email || !account?.id}
-          >
-            {loading ? "Sharing..." : "Share"}
-          </Button>
-        )}
-      </DialogActions>
-    </Dialog>
+        {error && <Alert severity="error">{error}</Alert>}
+        {success && <Alert severity="success">{success}</Alert>}
+      </Stack>
+    </Sheet>
   );
 }

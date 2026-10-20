@@ -4,7 +4,6 @@ import {
   TextField,
   Typography,
   Link,
-  Divider,
   Stack,
   Alert,
 } from "@mui/material";
@@ -18,6 +17,8 @@ import {
 import { auth, db } from "../firebaseConfig";
 import { useNavigate, Link as RouterLink } from "react-router-dom";
 import AuthLayout from "../components/AuthLayout";
+import PasswordField from "../components/ui/PasswordField";
+import { getAuthErrorMessage } from "../utils/authErrors";
 
 export default function Signup() {
   const [name, setName] = useState("");
@@ -35,7 +36,7 @@ export default function Signup() {
     try {
       const { user } = await createUserWithEmailAndPassword(
         auth,
-        email,
+        email.trim(),
         password
       );
 
@@ -43,7 +44,7 @@ export default function Signup() {
       const accountRef = doc(collection(db, "accounts"));
 
       await setDoc(accountRef, {
-        name: `${name}'s Account`,
+        name: "Pessoal",
         type: "personal",
         members: [user.uid],
         ownerId: user.uid,
@@ -51,7 +52,7 @@ export default function Signup() {
       });
 
       await setDoc(doc(db, "users", user.uid), {
-        name,
+        name: name.trim(),
         email: email.trim().toLowerCase(),
         createdAt: serverTimestamp(),
       });
@@ -59,7 +60,7 @@ export default function Signup() {
       navigate("/dashboard");
     } catch (err) {
       console.error("Signup error:", err);
-      setError(err.message || "Failed to create account.");
+      setError(getAuthErrorMessage(err, "Não foi possível criar sua conta. Tente novamente."));
     } finally {
       setLoading(false);
     }
@@ -67,56 +68,48 @@ export default function Signup() {
 
   return (
     <AuthLayout
-      title="Create Account"
-      subtitle="Sign up to start managing your finances"
+      title="Criar conta"
+      subtitle="Leva menos de um minuto. Você começa com uma conta pessoal."
     >
       {error && <Alert severity="error">{error}</Alert>}
 
       <form onSubmit={handleSignup}>
         <Stack spacing={2}>
           <TextField
-            label="Your Name"
-            fullWidth
+            label="Seu nome"
+            autoComplete="name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
           />
 
           <TextField
-            label="Email"
+            label="E-mail"
             type="email"
-            fullWidth
+            autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
           />
 
-          <TextField
-            label="Password"
-            type="password"
-            fullWidth
+          <PasswordField
+            autoComplete="new-password"
+            helperText="Mínimo de 6 caracteres"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
           />
 
-          <Button
-            type="submit"
-            variant="contained"
-            fullWidth
-            disabled={loading}
-          >
-            {loading ? "Creating Account..." : "Sign Up"}
+          <Button type="submit" variant="contained" size="large" fullWidth disabled={loading}>
+            {loading ? "Criando conta…" : "Criar conta"}
           </Button>
         </Stack>
       </form>
 
-      <Divider />
-
-      <Typography variant="body2" textAlign="center">
-        Already have an account?{" "}
-        <Link component={RouterLink} to="/" underline="hover">
-          Log in
+      <Typography variant="body2" textAlign="center" color="text.secondary">
+        Já tem uma conta?{" "}
+        <Link component={RouterLink} to="/" underline="hover" fontWeight={600}>
+          Entrar
         </Link>
       </Typography>
     </AuthLayout>

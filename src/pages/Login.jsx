@@ -4,7 +4,6 @@ import {
   TextField,
   Typography,
   Link,
-  Divider,
   Stack,
   Alert,
 } from "@mui/material";
@@ -13,6 +12,8 @@ import { auth, db } from "../firebaseConfig";
 import { doc, getDoc } from "firebase/firestore";
 import { useNavigate, Link as RouterLink } from "react-router-dom";
 import AuthLayout from "../components/AuthLayout";
+import PasswordField from "../components/ui/PasswordField";
+import { getAuthErrorMessage } from "../utils/authErrors";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -27,7 +28,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const { user } = await signInWithEmailAndPassword(auth, email, password);
+      const { user } = await signInWithEmailAndPassword(auth, email.trim(), password);
 
       const userDocSnap = await getDoc(doc(db, "users", user.uid));
       if (userDocSnap.exists()) {
@@ -38,7 +39,6 @@ export default function Login() {
           localStorage.setItem("householdId", userData.householdId);
         }
 
-        // 🆕 Set currentAccountId (first account by default)
         if (userData.accounts && userData.accounts.length > 0) {
           localStorage.setItem("currentAccountId", userData.accounts[0]);
         } else {
@@ -47,11 +47,11 @@ export default function Login() {
 
         navigate("/dashboard");
       } else {
-        setError("User data not found.");
+        setError("Não encontramos os dados do seu perfil. Fale com o suporte.");
       }
     } catch (err) {
       console.error("Login error:", err);
-      setError("Invalid credentials. Please try again.");
+      setError(getAuthErrorMessage(err, "Não foi possível entrar. Tente novamente."));
     } finally {
       setLoading(false);
     }
@@ -59,58 +59,47 @@ export default function Login() {
 
   return (
     <AuthLayout
-      title="Welcome Back 👋"
-      subtitle="Sign in to access your dashboard"
+      title="Bem-vindo de volta"
+      subtitle="Entre para acompanhar suas finanças."
     >
       {error && <Alert severity="error">{error}</Alert>}
 
       <form onSubmit={handleLogin}>
         <Stack spacing={2}>
           <TextField
-            label="Email"
+            label="E-mail"
             type="email"
-            fullWidth
+            autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
           />
 
-          <TextField
-            label="Password"
-            type="password"
-            fullWidth
+          <PasswordField
+            autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
           />
 
-          <Button
-            type="submit"
-            variant="contained"
-            fullWidth
-            disabled={loading}
-          >
-            {loading ? "Signing In..." : "Sign In"}
+          <Stack alignItems="flex-end" sx={{ mt: -0.5 }}>
+            <Link component={RouterLink} to="/forgot-password" underline="hover" variant="body2" fontWeight={600}>
+              Esqueci minha senha
+            </Link>
+          </Stack>
+
+          <Button type="submit" variant="contained" size="large" fullWidth disabled={loading}>
+            {loading ? "Entrando…" : "Entrar"}
           </Button>
         </Stack>
       </form>
 
-      <Stack spacing={1} mt={2}>
-        <Stack alignItems="flex-end">
-          <Link component={RouterLink} to="/forgot-password" underline="hover">
-            Forgot password?
-          </Link>
-        </Stack>
-
-        <Divider />
-
-        <Typography variant="body2" textAlign="center">
-          Don’t have an account?{" "}
-          <Link component={RouterLink} to="/signup" underline="hover">
-            Sign up
-          </Link>
-        </Typography>
-      </Stack>
+      <Typography variant="body2" textAlign="center" color="text.secondary">
+        Ainda não tem conta?{" "}
+        <Link component={RouterLink} to="/signup" underline="hover" fontWeight={600}>
+          Criar conta
+        </Link>
+      </Typography>
     </AuthLayout>
   );
 }

@@ -1,12 +1,4 @@
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  TextField,
-  Alert,
-} from "@mui/material";
+import { Alert, Button, Stack, TextField, Typography } from "@mui/material";
 import { useState } from "react";
 import { auth, db } from "../firebaseConfig";
 import {
@@ -14,18 +6,8 @@ import {
   doc,
   serverTimestamp,
   setDoc,
-  arrayUnion,
-  updateDoc,
 } from "firebase/firestore";
-
-const COLORS = [
-  "#4CAF50",
-  "#2196F3",
-  "#9C27B0",
-  "#FF9800",
-  "#F44336",
-  "#009688",
-];
+import Sheet from "./ui/Sheet";
 
 export default function CreateAccountDialog({
   open,
@@ -38,13 +20,13 @@ export default function CreateAccountDialog({
 
   const handleCreate = async () => {
     if (!name.trim()) {
-      setError("Account name is required");
+      setError("Dê um nome para a conta.");
       return;
     }
 
     const currentUser = auth.currentUser;
     if (!currentUser) {
-      setError("User not authenticated");
+      setError("Sua sessão expirou. Entre novamente.");
       return;
     }
 
@@ -52,16 +34,13 @@ export default function CreateAccountDialog({
       setLoading(true);
       setError(null);
 
-      const randomColor =
-        COLORS[Math.floor(Math.random() * COLORS.length)];
-
       const newAccountRef = doc(collection(db, "accounts"));
 
       await setDoc(newAccountRef, {
         name: name.trim(),
         type: "shared",
         members: [currentUser.uid],
-        ownerId: currentUser.uid,   // ✅ 🔥 THIS IS THE FIX
+        ownerId: currentUser.uid,
         createdAt: serverTimestamp(),
       });
 
@@ -69,11 +48,11 @@ export default function CreateAccountDialog({
 
       setName("");
       setError(null);
+      setLoading(false);
       onClose();
     } catch (err) {
       console.error(err);
-      setError("Failed to create account");
-    } finally {
+      setError("Não foi possível criar a conta. Tente novamente.");
       setLoading(false);
     }
   };
@@ -86,38 +65,39 @@ export default function CreateAccountDialog({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} fullWidth>
-      <DialogTitle>Create Account</DialogTitle>
-
-      <DialogContent sx={{ pt: 2 }}>
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
+    <Sheet
+      open={open}
+      onClose={handleClose}
+      title="Nova conta compartilhada"
+      subtitle="Organize as finanças da casa, de um casal ou de um projeto com outras pessoas."
+      actions={
+        <Button
+          variant="contained"
+          size="large"
+          fullWidth
+          onClick={handleCreate}
+          disabled={loading || !name.trim()}
+        >
+          {loading ? "Criando…" : "Criar conta"}
+        </Button>
+      }
+    >
+      <Stack spacing={2}>
+        {error && <Alert severity="error">{error}</Alert>}
 
         <TextField
-          label="Account Name"
-          fullWidth
+          label="Nome da conta"
+          placeholder="Ex.: Casa, Viagem 2027"
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleCreate()}
         />
-      </DialogContent>
 
-      <DialogActions sx={{ p: 2 }}>
-        <Button onClick={handleClose} disabled={loading}>
-          Cancel
-        </Button>
-
-        <Button
-          variant="contained"
-          onClick={handleCreate}
-          disabled={loading || !name.trim()} // 🔥 small UX win
-        >
-          {loading ? "Creating..." : "Create"}
-        </Button>
-      </DialogActions>
-    </Dialog>
+        <Typography variant="caption" color="text.secondary">
+          Você será o titular e poderá convidar membros depois.
+        </Typography>
+      </Stack>
+    </Sheet>
   );
 }

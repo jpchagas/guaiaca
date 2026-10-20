@@ -1,33 +1,38 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Box,
   Typography,
   CircularProgress,
-  Button,
-  Card,
-  CardContent,
   LinearProgress,
-  Stack,
-  IconButton,
+  Paper,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
+import { FlagOutlined, PersonOutline } from "@mui/icons-material";
+import { useOutletContext } from "react-router-dom";
 
-import AddIcon from "@mui/icons-material/Add";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 
-import { useEffect } from "react";
-import AddGoalDialog from "../components/AddGoalDialog";
 import { useAccount } from "../context/AccountContext";
+import Money from "../components/ui/Money";
+import EmptyState from "../components/ui/EmptyState";
+import { formatCurrency } from "../utils/format";
+import { GOAL_TYPES } from "../utils/goalTypes";
 
 export default function Goals() {
   const { currentAccount } = useAccount();
+  const { openCreate } = useOutletContext();
 
   const [goals, setGoals] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (!currentAccount?.id) return;
+    if (!currentAccount?.id) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
 
     const q = query(
       collection(db, "goals"),
@@ -35,12 +40,7 @@ export default function Goals() {
     );
 
     const unsub = onSnapshot(q, (snap) => {
-      const data = snap.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      }));
-
-      setGoals(data);
+      setGoals(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       setLoading(false);
     });
 
@@ -49,72 +49,97 @@ export default function Goals() {
 
   if (!currentAccount?.id) {
     return (
-      <Box textAlign="center" mt={6}>
-        <Typography color="text.secondary">
-          Select an account to view goals
-        </Typography>
-      </Box>
+      <EmptyState
+        icon={PersonOutline}
+        title="Nenhuma conta selecionada"
+        description="Selecione uma conta para ver suas metas."
+      />
     );
   }
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" mt={6}>
-        <CircularProgress />
+      <Box display="flex" justifyContent="center" mt={8}>
+        <CircularProgress size={28} />
       </Box>
     );
   }
 
-  const progress = (g) =>
-    g.targetAmount ? (g.currentAmount / g.targetAmount) * 100 : 0;
+  if (!goals.length) {
+    return (
+      <Paper variant="outlined">
+        <EmptyState
+          icon={FlagOutlined}
+          title="Comece a planejar"
+          description="Crie metas para uma reserva de emergência, uma compra importante ou para quitar uma dívida."
+          actionLabel="Criar meta"
+          onAction={() => openCreate("goal")}
+        />
+      </Paper>
+    );
+  }
 
   return (
-    <Box sx={{ p: 2 }}>
-      {/* Header */}
-      <Box display="flex" justifyContent="space-between" mb={2}>
-        <Typography variant="h5">Goals</Typography>
+    <Box display="flex" flexDirection="column" gap={1.5}>
+      {goals.map((g) => {
+        const type = GOAL_TYPES[g.type] || GOAL_TYPES.savings;
+        const current = Number(g.currentAmount) || 0;
+        const target = Number(g.targetAmount) || 0;
+        const progress = target ? Math.min((current / target) * 100, 100) : 0;
+        const done = target > 0 && current >= target;
 
-        <IconButton onClick={() => setOpen(true)}>
-          <AddIcon />
-        </IconButton>
-      </Box>
-
-      {/* Empty state */}
-      {!goals.length && (
-        <Typography color="text.secondary">
-          No goals yet. Create your first one.
-        </Typography>
-      )}
-
-      {/* List */}
-      <Stack spacing={2}>
-        {goals.map((g) => (
-          <Card key={g.id} variant="outlined">
-            <CardContent>
-              <Typography fontWeight={600}>
-                {g.title}
-              </Typography>
-
-              <Typography variant="body2" color="text.secondary">
-                {g.type}
-              </Typography>
-
-              <Box mt={2}>
-                <LinearProgress
-                  variant="determinate"
-                  value={Math.min(progress(g), 100)}
-                />
+        return (
+          <Paper key={g.id} variant="outlined" sx={{ p: 2.5 }}>
+            <Box display="flex" alignItems="center" gap={1.5} mb={2}>
+              <Box
+                sx={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: "14px",
+                  display: "grid",
+                  placeItems: "center",
+                  color: type.color,
+                  backgroundColor: alpha(type.color, 0.12),
+                  flexShrink: 0,
+                }}
+              >
+                <type.Icon />
               </Box>
 
-              <Typography mt={1} variant="body2">
-                R$ {g.currentAmount || 0} / R$ {g.targetAmount}
-              </Typography>
-            </CardContent>
-          </Card>
-        ))}
-      </Stack>
+              <Box flex={1} minWidth={0}>
+                <Typography fontWeight={600} noWrap>
+                  {g.title}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {type.label}
+                </Typography>
+              </Box>
 
-      <AddGoalDialog open={open} onClose={() => setOpen(false)} />
+              <Typography
+                variant="subtitle1"
+                fontWeight={700}
+                color={done ? "primary" : "text.primary"}
+                sx={{ fontVariantNumeric: "tabular-nums" }}
+              >
+                {Math.round(progress)}%
+              </Typography>
+            </Box>
+
+            <LinearProgress
+              variant="determinate"
+              value={progress}
+              sx={{ height: 10, "& .MuiLinearProgress-bar": { backgroundColor: type.color } }}
+            />
+
+            <Box display="flex" justifyContent="space-between" alignItems="baseline" mt={1.25}>
+              <Money value={current} variant="body2" fontWeight={700} />
+              <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: "tabular-nums" }}>
+                {done ? "Meta atingida" : `Meta: ${formatCurrency(target)}`}
+              </Typography>
+            </Box>
+          </Paper>
+        );
+      })}
     </Box>
   );
 }
