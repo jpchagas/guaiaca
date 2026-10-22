@@ -12,5 +12,19 @@
         "destination": "/index.html"
       }
     ]
-  }
+  },
+  "firestore": {
+    "indexes": "firestore.indexes.json"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "*.log"
+      ]
+    }
+  ]
 }

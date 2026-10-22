@@ -81,7 +81,12 @@ export default function TransactionEntryDialog({
         )}
 
         {entryMode === "import" && (
-          <ImportTransactionsFlow />
+          <ImportTransactionsFlow
+            currentAccount={currentAccount}
+            members={members}
+            currentUserId={currentUserId}
+            onClose={onClose}
+          />
         )}
       </Box>
     </Sheet>

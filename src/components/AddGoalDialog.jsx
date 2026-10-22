@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Box,
@@ -10,25 +10,51 @@ import {
   Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { db } from "../firebaseConfig";
 import { useAccount } from "../context/AccountContext";
 import Sheet from "./ui/Sheet";
 import { GOAL_TYPES } from "../utils/goalTypes";
-import { parseAmountInput } from "../utils/format";
+import { parseAmountInput, toAmountInput } from "../utils/format";
+import { createGoal, updateGoal } from "../services/goals/goalService";
 
-const EMPTY_FORM = { title: "", type: "savings", targetAmount: "" };
+const EMPTY_FORM = { title: "", type: "savings", targetAmount: "", currentAmount: "" };
 
-export default function AddGoalDialog({ open, onClose }) {
+const toForm = (goal) =>
+  goal
+    ? {
+        title: goal.title || "",
+        type: goal.type || "savings",
+        targetAmount: toAmountInput(goal.targetAmount),
+        currentAmount: toAmountInput(goal.currentAmount),
+      }
+    : EMPTY_FORM;
+
+const moneyAdornment = {
+  startAdornment: (
+    <InputAdornment position="start">
+      <Typography fontWeight={600} color="text.secondary">R$</Typography>
+    </InputAdornment>
+  ),
+  sx: { fontVariantNumeric: "tabular-nums" },
+};
+
+/** Creates a goal, or edits `goal` when given. */
+export default function AddGoalDialog({ open, onClose, goal = null }) {
   const { currentAccount } = useAccount();
-
+  const isEdit = !!goal;
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
+  useEffect(() => {
+    if (open) {
+      setForm(toForm(goal));
+      setError(null);
+    }
+  }, [open, goal]);
+
   const target = parseAmountInput(form.targetAmount);
-  const canSubmit = form.title.trim() && target > 0 && !saving;
+  const start = form.currentAmount ? parseAmountInput(form.currentAmount) : 0;
+  const canSubmit = form.title.trim() && target > 0 && start >= 0 && !saving;
 
   const handleChange = (e) => {
     setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
@@ -36,32 +62,34 @@ export default function AddGoalDialog({ open, onClose }) {
 
   const handleClose = () => {
     if (saving) return;
-    setForm(EMPTY_FORM);
-    setError(null);
     onClose();
   };
 
   const handleSubmit = async () => {
     if (!canSubmit || !currentAccount?.id) return;
 
+    const values = {
+      title: form.title.trim(),
+      type: form.type,
+      targetAmount: target,
+      currentAmount: start,
+    };
+
     try {
       setSaving(true);
       setError(null);
 
-      await addDoc(collection(db, "goals"), {
-        accountId: currentAccount.id,
-        title: form.title.trim(),
-        type: form.type,
-        targetAmount: target,
-        currentAmount: 0,
-        createdAt: serverTimestamp(),
-      });
+      if (isEdit) {
+        await updateGoal(goal.id, values);
+      } else {
+        await createGoal({ accountId: currentAccount.id, ...values });
+      }
 
       setSaving(false);
-      handleClose();
+      onClose();
     } catch (err) {
       console.error(err);
-      setError("Não foi possível criar a meta. Tente novamente.");
+      setError(`Não foi possível ${isEdit ? "salvar" : "criar"} a meta. Tente novamente.`);
       setSaving(false);
     }
   };
@@ -70,11 +98,11 @@ export default function AddGoalDialog({ open, onClose }) {
     <Sheet
       open={open}
       onClose={handleClose}
-      title="Nova meta"
-      subtitle="Defina um objetivo e acompanhe seu progresso."
+      title={isEdit ? "Editar meta" : "Nova meta"}
+      subtitle={isEdit ? undefined : "Defina um objetivo e acompanhe seu progresso."}
       actions={
         <Button variant="contained" size="large" fullWidth onClick={handleSubmit} disabled={!canSubmit}>
-          {saving ? "Salvando…" : "Criar meta"}
+          {saving ? "Salvando…" : isEdit ? "Salvar alterações" : "Criar meta"}
         </Button>
       }
     >
@@ -130,14 +158,18 @@ export default function AddGoalDialog({ open, onClose }) {
           value={form.targetAmount}
           onChange={handleChange}
           inputProps={{ inputMode: "decimal" }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Typography fontWeight={600} color="text.secondary">R$</Typography>
-              </InputAdornment>
-            ),
-            sx: { fontVariantNumeric: "tabular-nums" },
-          }}
+          InputProps={moneyAdornment}
+        />
+
+        <TextField
+          label="Já guardado"
+          name="currentAmount"
+          placeholder="0,00"
+          value={form.currentAmount}
+          onChange={handleChange}
+          helperText="Quanto você já tinha separado antes de criar a meta. Depósitos e retiradas são registrados na própria meta."
+          inputProps={{ inputMode: "decimal" }}
+          InputProps={moneyAdornment}
         />
       </Stack>
     </Sheet>

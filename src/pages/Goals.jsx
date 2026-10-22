@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   Box,
+  ButtonBase,
   Typography,
   CircularProgress,
   LinearProgress,
@@ -13,18 +14,27 @@ import { useOutletContext } from "react-router-dom";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 
+import { auth } from "../firebaseConfig";
 import { useAccount } from "../context/AccountContext";
 import Money from "../components/ui/Money";
 import EmptyState from "../components/ui/EmptyState";
+import GoalDetailSheet from "../components/GoalDetailSheet";
+import AddGoalDialog from "../components/AddGoalDialog";
 import { formatCurrency } from "../utils/format";
-import { GOAL_TYPES } from "../utils/goalTypes";
+import { GOAL_TYPES, getGoalBalance } from "../utils/goalTypes";
 
 export default function Goals() {
-  const { currentAccount } = useAccount();
+  const { currentAccount, members } = useAccount();
   const { openCreate } = useOutletContext();
 
   const [goals, setGoals] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // By id, so the open sheet follows live updates (e.g. a new deposit)
+  const [selectedId, setSelectedId] = useState(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const selected = goals.find((g) => g.id === selectedId) || null;
 
   useEffect(() => {
     if (!currentAccount?.id) {
@@ -83,13 +93,22 @@ export default function Goals() {
     <Box display="flex" flexDirection="column" gap={1.5}>
       {goals.map((g) => {
         const type = GOAL_TYPES[g.type] || GOAL_TYPES.savings;
-        const current = Number(g.currentAmount) || 0;
+        const current = getGoalBalance(g);
         const target = Number(g.targetAmount) || 0;
         const progress = target ? Math.min((current / target) * 100, 100) : 0;
         const done = target > 0 && current >= target;
 
         return (
-          <Paper key={g.id} variant="outlined" sx={{ p: 2.5 }}>
+          <Paper
+            key={g.id}
+            variant="outlined"
+            component={ButtonBase}
+            onClick={() => {
+              setSelectedId(g.id);
+              setDetailOpen(true);
+            }}
+            sx={{ p: 2.5, display: "block", width: "100%", textAlign: "left" }}
+          >
             <Box display="flex" alignItems="center" gap={1.5} mb={2}>
               <Box
                 sx={{
@@ -140,6 +159,24 @@ export default function Goals() {
           </Paper>
         );
       })}
+
+      <GoalDetailSheet
+        open={detailOpen && !!selected}
+        onClose={() => setDetailOpen(false)}
+        goal={selected}
+        members={members}
+        currentUserId={auth.currentUser?.uid}
+        onEdit={() => {
+          setDetailOpen(false);
+          setEditOpen(true);
+        }}
+      />
+
+      <AddGoalDialog
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        goal={selected}
+      />
     </Box>
   );
 }

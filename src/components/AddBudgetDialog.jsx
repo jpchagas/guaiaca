@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Button,
@@ -8,47 +8,63 @@ import {
   Box,
   InputAdornment,
   ListItemIcon,
+  Slider,
   Typography,
 } from "@mui/material";
-import { Add } from "@mui/icons-material";
-
+import { Add, DeleteOutline } from "@mui/icons-material";
 import {
   collection,
   addDoc,
   serverTimestamp,
 } from "firebase/firestore";
-
 import { db } from "../firebaseConfig";
 import { useCategories } from "../hooks/useCategories";
 import Sheet from "./ui/Sheet";
 import CategoryAvatar from "./ui/CategoryAvatar";
-import { parseAmountInput } from "../utils/format";
+import ConfirmActionDialog from "./ConfirmActionDialog";
+import { formatCurrency, parseAmountInput, toAmountInput } from "../utils/format";
+import {
+  DEFAULT_ALERT_AT,
+  budgetExists,
+  createBudget,
+  deleteBudget,
+  updateBudget,
+} from "../services/budgets/budgetService";
 
+/** Creates a budget, or edits/deletes `budget` when given. */
 export default function AddBudgetDialog({
   open,
   onClose,
   currentAccount,
+  budget = null,
 }) {
   const categories = useCategories();
+  const isEdit = !!budget;
 
   const [category, setCategory] = useState("");
   const [limit, setLimit] = useState("");
+  const [alertAt, setAlertAt] = useState(DEFAULT_ALERT_AT);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const [newCategoryMode, setNewCategoryMode] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setCategory(budget?.category || "");
+    setLimit(toAmountInput(budget?.limit));
+    setAlertAt(budget?.alertAt || DEFAULT_ALERT_AT);
+    setError(null);
+    setNewCategoryMode(false);
+    setNewCategoryName("");
+  }, [open, budget]);
 
   const parsedLimit = parseAmountInput(limit);
 
   const handleClose = () => {
     if (saving) return;
-
-    setCategory("");
-    setLimit("");
-    setError(null);
-    setNewCategoryMode(false);
-    setNewCategoryName("");
     onClose();
   };
 
@@ -80,39 +96,75 @@ export default function AddBudgetDialog({
       setSaving(true);
       setError(null);
 
-      await addDoc(collection(db, "budgets"), {
-        accountId: currentAccount.id,
-        category,
-        limit: parsedLimit,
-        period: "monthly",
-        createdAt: serverTimestamp(),
-      });
+      if (await budgetExists({ accountId: currentAccount.id, category, exceptId: budget?.id })) {
+        setError("Já existe um orçamento para essa categoria. Edite o existente.");
+        setSaving(false);
+        return;
+      }
+
+      const values = { category, limit: parsedLimit, alertAt };
+      if (isEdit) {
+        await updateBudget(budget.id, values);
+      } else {
+        await createBudget({ accountId: currentAccount.id, ...values });
+      }
 
       setSaving(false);
-      handleClose();
+      onClose();
     } catch (err) {
-      console.error("Error creating budget:", err);
+      console.error("Error saving budget:", err);
       setError("Não foi possível salvar o orçamento. Tente novamente.");
       setSaving(false);
     }
   };
 
+  const handleDelete = async () => {
+    try {
+      setSaving(true);
+      await deleteBudget(budget.id);
+      setConfirmDelete(false);
+      setSaving(false);
+      onClose();
+    } catch (err) {
+      console.error(err);
+      setError("Não foi possível excluir o orçamento.");
+      setConfirmDelete(false);
+      setSaving(false);
+    }
+  };
+
+  const categoryName = categories.find((c) => c.id === category)?.name;
+
   return (
     <Sheet
       open={open}
       onClose={handleClose}
-      title="Novo orçamento"
-      subtitle="Defina um limite mensal de gastos para uma categoria."
+      title={isEdit ? "Editar orçamento" : "Novo orçamento"}
+      subtitle={isEdit ? undefined : "Defina um limite mensal de gastos para uma categoria."}
       actions={
-        <Button
-          variant="contained"
-          size="large"
-          fullWidth
-          onClick={handleSubmit}
-          disabled={!category || !(parsedLimit > 0) || saving}
-        >
-          {saving ? "Salvando…" : "Criar orçamento"}
-        </Button>
+        <>
+          {isEdit && (
+            <Button
+              color="error"
+              variant="outlined"
+              startIcon={<DeleteOutline />}
+              onClick={() => setConfirmDelete(true)}
+              disabled={saving}
+              sx={{ flexShrink: 0 }}
+            >
+              Excluir
+            </Button>
+          )}
+          <Button
+            variant="contained"
+            size="large"
+            fullWidth
+            onClick={handleSubmit}
+            disabled={!category || !(parsedLimit > 0) || saving}
+          >
+            {saving ? "Salvando…" : isEdit ? "Salvar alterações" : "Criar orçamento"}
+          </Button>
+        </>
       }
     >
       <Stack spacing={2.25}>
@@ -192,7 +244,42 @@ export default function AddBudgetDialog({
             sx: { fontVariantNumeric: "tabular-nums" },
           }}
         />
+
+        <Box>
+          <Box display="flex" justifyContent="space-between" alignItems="baseline">
+            <Typography variant="body2" fontWeight={600}>
+              Avisar ao atingir
+            </Typography>
+            <Typography variant="body2" fontWeight={700} sx={{ fontVariantNumeric: "tabular-nums" }}>
+              {alertAt}%
+            </Typography>
+          </Box>
+          <Slider
+            value={alertAt}
+            onChange={(_, v) => setAlertAt(v)}
+            min={50}
+            max={95}
+            step={5}
+            marks
+            aria-label="Avisar ao atingir"
+          />
+          <Typography variant="caption" color="text.secondary">
+            Os membros da conta recebem um aviso
+            {parsedLimit > 0 ? ` ao passar de ${formatCurrency((parsedLimit * alertAt) / 100)}` : ""} e outro
+            ao estourar o limite.
+          </Typography>
+        </Box>
       </Stack>
+
+      <ConfirmActionDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={handleDelete}
+        loading={saving}
+        title="Excluir orçamento"
+        description={`O orçamento${categoryName ? ` de ${categoryName}` : ""} será excluído. Suas transações não são afetadas.`}
+        confirmText="Excluir"
+      />
     </Sheet>
   );
 }

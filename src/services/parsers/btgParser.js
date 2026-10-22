@@ -1,115 +1,58 @@
-// src/services/parsers/btgParser.js
-import * as XLSX from "xlsx";
-import * as pdfjsLib from "pdfjs-dist";
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url
-).toString();
+// BTG Pactual credit card statement (PDF).
+//
+// Transactions come in content order as: amount, description, date —
+//   "R$ 74,50" / "Bordados Companhia (2/2)" / "29 Ago"
+// grouped under one section per card:
+//   "Lançamentos do cartão físico | Joao Pedro Chagas | Final 1866"
+import {
+  AMOUNT,
+  buildTransaction,
+  parseBRL,
+  resolveDate,
+  scanSections,
+  splitInstallment,
+  sumAmounts,
+  toISODate,
+  toRef,
+} from "../importing/statementUtils";
 
-/**
- * Parse BTG Pactual credit card statements (XLSX or PDF)
- * Returns array of transactions in unified format
- */
-export default async function parseBTG(file) {
-  console.log("Processing BTG file");
-  const fileType = file.name.split(".").pop().toLowerCase();
-  console.log(`File Type: ${fileType}`);
-  if (fileType === "xlsx") {
-    return await parseBTGXLSX(file);
-  } else if (fileType === "pdf") {
-    return await parseBTGPDF(file);
-  } else {
-    throw new Error("Unsupported BTG file type. Expected XLSX or PDF.");
-  }
-}
+const ROWS = new RegExp(
+  [
+    String.raw`^Lançamentos do cartão [^|\n]*\| (?<holder>[^|\n]+?) \| Final (?<last4>\d{4})`,
+    String.raw`^(?<amount>[-−]?\s?R\$ ${AMOUNT})\n(?<desc>[^\n]+)\n(?<day>\d{1,2}) (?<month>[A-Za-zç]{3})$`,
+  ].join("|"),
+  "gm"
+);
 
-/** 🧾 Parse XLSX format */
-async function parseBTGXLSX(file) {
-  const data = await file.arrayBuffer();
-  const workbook = XLSX.read(data, { type: "array" });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+export default {
+  kind: "credit_card",
+  id: "btg",
+  name: "BTG Pactual",
+  logo: "/btg_logo.png",
 
-  const currentYear = new Date().getFullYear();
+  detect: (text) => /30\.306\.294\/0001-45|BTG Pactual S\.A/i.test(text),
 
-  return rows
-    .filter((r) => r["Valor"]) // ignore empty rows
-    .map((r) => ({
-      date: normalizeDate(r["Data"], currentYear),
-      description: r["Descrição"] || "",
-      amount: parseAmount(r["Valor"]),
-      category: inferCategory(r["Descrição"] || ""),
-      bank: "BTG",
-    }));
-}
+  parse(text) {
+    // "Vencimento: 07/10" + "fatura de Outubro de 2025"
+    const due = text.match(/Vencimento: (\d{2})\/(\d{2})/);
+    const year = text.match(/fatura de \S+ de (\d{4})/)?.[1];
+    const ref = due && year ? toRef(due[2], year) : null;
 
-/** 📄 Parse PDF format */
-async function parseBTGPDF(file) {
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  let textContent = "";
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    textContent += content.items.map((item) => item.str).join(" ") + "\n";
-  }
-  console.log(textContent)
-  // Match example lines like:
-  // "12 Set Armazém 43 24out (2/2) R$ 74,50"
-const regex = /(R\$ [0-9]+\,[0-9]+) (\D+?) (\([0-9]\/[0-9]+\) )?([0-9]+ \w+)/g;
+    const transactions = scanSections(text, ROWS, (g, section) => {
+      const { description, installment } = splitInstallment(g.desc, /\s*\((\d{1,2})\/(\d{1,2})\)$/);
+      return buildTransaction({
+        date: resolveDate(g.day, g.month, ref),
+        description,
+        amount: parseBRL(g.amount),
+        installment,
+        section,
+      });
+    });
 
-const transactions = [];
-let match;
-
-while ((match = regex.exec(textContent)) !== null) {
-  const [, amountRaw, descriptionRaw, parcelRaw, dateRaw] = match;
-
-  const amount = parseAmount(amountRaw); // parse "R$ 123,45" → 123.45
-  const description = descriptionRaw.trim();
-  const parcel = parcelRaw ? parcelRaw.replace(/[()]/g, "").trim() : "0/0";
-  const date = dateRaw.trim();
-
-  transactions.push({
-    amount: -amount, // assume expense
-    description,
-    parcel,
-    date,
-    category: inferCategory(description),
-    bank: "BTG",
-  });
-}
-
-console.log(transactions);
-return transactions;
-}
-
-/** 🔢 Helpers */
-
-function parseAmount(value) {
-  if (typeof value === "number") return value;
-  return parseFloat(value.replace(/[R$\s.]/g, "").replace(",", "."));
-}
-
-function normalizeDate(dateStr, year) {
-  if (!dateStr) return null;
-  const [day, month] = dateStr.split("/").map((x) => x.padStart(2, "0"));
-  return `${year}-${month}-${day}`;
-}
-
-function parseDateFromPDF(day, monthAbbrev, year) {
-  const monthMap = {
-    jan: "01", fev: "02", mar: "03", abr: "04", mai: "05", jun: "06",
-    jul: "07", ago: "08", set: "09", out: "10", nov: "11", dez: "12",
-  };
-  const month = monthMap[monthAbbrev.toLowerCase()] || "01";
-  return `${year}-${month}-${day.padStart(2, "0")}`;
-}
-
-function inferCategory(description) {
-  const desc = description.toLowerCase();
-  if (desc.includes("mercado") || desc.includes("armaz")) return "Food";
-  if (desc.includes("uber") || desc.includes("99")) return "Transport";
-  if (desc.includes("academ") || desc.includes("gym")) return "Health";
-  if (desc.includes("netflix") || desc.includes("spotify")) return "Entertainment";
-  return "Other";
-}
+    return {
+      dueDate: due && year ? toISODate(due[1], due[2], year) : null,
+      total: sumAmounts(text, new RegExp(String.raw`Total do cartão: R\$ (${AMOUNT})`, "g")),
+      transactions,
+    };
+  },
+};

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Box,
+  ButtonBase,
   Typography,
   CircularProgress,
   LinearProgress,
@@ -21,12 +22,14 @@ import Money from "../components/ui/Money";
 import CategoryAvatar from "../components/ui/CategoryAvatar";
 import EmptyState from "../components/ui/EmptyState";
 import SectionHeader from "../components/ui/SectionHeader";
+import AddBudgetDialog from "../components/AddBudgetDialog";
+import { DEFAULT_ALERT_AT } from "../services/budgets/budgetService";
 import { MONTHS, formatCurrency, isInMonth } from "../utils/format";
 
 /* -------------------- Helpers -------------------- */
 
-const getProgressColor = (percentage) => {
-  if (percentage < 75) return "primary";
+const getProgressColor = (percentage, alertAt = DEFAULT_ALERT_AT) => {
+  if (percentage < alertAt) return "primary";
   if (percentage < 100) return "warning";
   return "error";
 };
@@ -41,6 +44,10 @@ export default function Budget() {
 
   const [budgets, setBudgets] = useState([]);
   const [budgetsLoading, setBudgetsLoading] = useState(true);
+
+  // Kept separate so the sheet keeps its content during the close animation
+  const [editingBudget, setEditingBudget] = useState(null);
+  const [editOpen, setEditOpen] = useState(false);
 
   /* -------------------- Load Budgets -------------------- */
   useEffect(() => {
@@ -181,12 +188,18 @@ export default function Budget() {
         <Paper variant="outlined" sx={{ overflow: "hidden" }}>
           {rows.map((budget, i) => {
             const category = categoriesById[budget.category];
-            const color = getProgressColor(budget.percentage);
+            const color = getProgressColor(budget.percentage, budget.alertAt);
 
             return (
               <Box key={budget.id}>
                 {i > 0 && <Divider />}
-                <Box sx={{ p: 2, display: "flex", gap: 1.5 }}>
+                <ButtonBase
+                  onClick={() => {
+                    setEditingBudget(budget);
+                    setEditOpen(true);
+                  }}
+                  sx={{ p: 2, display: "flex", gap: 1.5, width: "100%", textAlign: "left", alignItems: "flex-start" }}
+                >
                   <CategoryAvatar category={category} />
 
                   <Box flex={1} minWidth={0}>
@@ -227,12 +240,19 @@ export default function Budget() {
                       </Typography>
                     </Box>
                   </Box>
-                </Box>
+                </ButtonBase>
               </Box>
             );
           })}
         </Paper>
       </Box>
+
+      <AddBudgetDialog
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        currentAccount={currentAccount}
+        budget={editingBudget}
+      />
     </Box>
   );
 }

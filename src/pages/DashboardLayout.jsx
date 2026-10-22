@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AppBar,
   Toolbar,
@@ -16,6 +16,9 @@ import {
   ListItemIcon,
   Divider,
   CircularProgress,
+  Badge,
+  Snackbar,
+  Button,
 } from "@mui/material";
 
 import {
@@ -29,6 +32,7 @@ import {
   FlagOutlined,
   Flag,
   Add as AddIcon,
+  NotificationsNoneOutlined,
 } from "@mui/icons-material";
 
 import { useNavigate, Outlet, useLocation } from "react-router-dom";
@@ -42,8 +46,11 @@ import DateSwitcher from "../components/DateSwitcher";
 import AddBudgetDialog from "../components/AddBudgetDialog";
 import AddGoalDialog from "../components/AddGoalDialog";
 import TransactionEntryDialog from "../components/TransactionEntryDialog";
+import NotificationsSheet from "../components/NotificationsSheet";
 
 import { useAccount } from "../context/AccountContext";
+import { useNotifications } from "../hooks/useNotifications";
+import { refreshPushToken } from "../services/notifications/push";
 import { getFirstName, getInitials } from "../utils/format";
 
 const NAV_ITEMS = [
@@ -66,6 +73,8 @@ export default function DashboardLayout() {
   const [accountDrawerOpen, setAccountDrawerOpen] = useState(false);
   const [dateDrawerOpen, setDateDrawerOpen] = useState(false);
   const [userMenuAnchor, setUserMenuAnchor] = useState(null);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [toast, setToast] = useState(null);
 
   const {
     accounts = [],
@@ -84,6 +93,27 @@ export default function DashboardLayout() {
   const me = members.find((m) => m.id === currentUserId);
   const displayName = me?.name || currentUser?.displayName || "";
   const email = me?.email || currentUser?.email || "";
+
+  const { items: notifications, unreadCount, markAllRead } = useNotifications(currentUserId, {
+    onArrive: setToast,
+  });
+
+  // Push tokens rotate; keep this device's token current
+  useEffect(() => {
+    refreshPushToken().catch(console.error);
+  }, [currentUserId]);
+
+  const closeNotifications = () => {
+    setNotificationsOpen(false);
+    markAllRead().catch(console.error);
+  };
+
+  const openNotification = (n) => {
+    if (n.accountId && n.accountId !== currentAccountId) switchAccount(n.accountId);
+    if (n.link) navigate(n.link);
+    setToast(null);
+    closeNotifications();
+  };
 
   const handleLogout = async () => {
     setUserMenuAnchor(null);
@@ -145,6 +175,16 @@ export default function DashboardLayout() {
             <Typography variant="h6" fontWeight={700} noWrap sx={{ flex: 1 }}>
               {pageTitle}
             </Typography>
+
+            <IconButton
+              onClick={() => setNotificationsOpen(true)}
+              aria-label={unreadCount ? `Notificações (${unreadCount} novas)` : "Notificações"}
+              sx={{ mr: 0.5 }}
+            >
+              <Badge badgeContent={unreadCount} color="error" max={9}>
+                <NotificationsNoneOutlined />
+              </Badge>
+            </IconButton>
 
             <IconButton
               onClick={(e) => setUserMenuAnchor(e.currentTarget)}
@@ -297,6 +337,27 @@ export default function DashboardLayout() {
       <AddGoalDialog
         open={activeSheet === "goal"}
         onClose={() => setActiveSheet(null)}
+      />
+
+      <NotificationsSheet
+        open={notificationsOpen}
+        onClose={closeNotifications}
+        items={notifications}
+        onSelect={openNotification}
+      />
+
+      {/* Notifications that arrive while the app is open */}
+      <Snackbar
+        open={!!toast}
+        autoHideDuration={6000}
+        onClose={(_, reason) => reason !== "clickaway" && setToast(null)}
+        message={toast ? `${toast.title} — ${toast.body}` : ""}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+        action={
+          <Button color="inherit" size="small" onClick={() => openNotification(toast)} sx={{ color: "#7EE0B0" }}>
+            Ver
+          </Button>
+        }
       />
     </Box>
   );

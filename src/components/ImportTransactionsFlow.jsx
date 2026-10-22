@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import {
   Alert,
+  Avatar,
   Box,
   Button,
   ButtonBase,
-  Divider,
+  Chip,
   LinearProgress,
   Paper,
   Typography,
@@ -15,216 +16,330 @@ import {
   CloudUploadOutlined,
   InsertDriveFileOutlined,
   CheckCircle,
+  ErrorOutline,
 } from "@mui/icons-material";
 
-import { parseFile } from "../services/importing/parseFile";
+import { parseStatementFile } from "../services/importing/parseFile";
+import { SUPPORTED_BANKS } from "../services/importing/parseStatement";
+import { matchCardholder } from "../services/importing/matchCardholder";
+import { buildCategorySuggester } from "../services/importing/suggestCategory";
+import { buildImportDrafts } from "../services/importing/importDrafts";
+import { createImportedTransactions } from "../services/transactions/transactionService";
+import { useAccount } from "../context/AccountContext";
+import { useCategories } from "../hooks/useCategories";
+import ImportReviewList from "./ImportReviewList";
 import Money from "./ui/Money";
-import { formatShortDate } from "../utils/format";
+import { finance } from "../theme";
+import { formatCurrency, formatShortDate, getFirstName, getInitials } from "../utils/format";
 
-const BANKS = [
-  { id: "btg", name: "BTG Pactual", logo: "/btg_logo.png", formats: ".pdf,.xlsx", available: true },
-  { id: "nubank", name: "Nubank", logo: "/nubank_logo.png", available: false },
-  { id: "c6", name: "C6 Bank", logo: "/c6_logo.png", available: false },
-  { id: "bradesco", name: "Bradesco", logo: "/bradesco_logo.png", available: false },
-];
+const ERROR_MESSAGES = {
+  unsupportedFile: "Envie o extrato ou a fatura em PDF (ou CSV, quando o banco oferecer).",
+  scannedPdf: "Este PDF é uma imagem digitalizada, sem texto para ler. Exporte o extrato pelo app ou internet banking do seu banco.",
+  unknownBank: `Não reconhecemos este arquivo. Bancos suportados: ${SUPPORTED_BANKS.map((b) => b.name).join(", ")}.`,
+  noTransactions: "Reconhecemos o banco, mas não encontramos lançamentos neste arquivo.",
+};
 
-const formatParsedDate = (value) =>
-  typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
-    ? formatShortDate(value)
-    : value || "—";
+const CHECK_LABELS = { in: "entradas", out: "saídas", net: "total" };
 
-export default function ImportTransactionsFlow() {
-  const [bank, setBank] = useState("btg");
+export default function ImportTransactionsFlow({ currentAccount, members = [], currentUserId, onClose }) {
+  const { transactions: existing } = useAccount();
+  const categories = useCategories();
+
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [parsedTransactions, setParsedTransactions] = useState(null);
-
-  const selectedBank = BANKS.find((b) => b.id === bank);
+  const [statement, setStatement] = useState(null);
+  const [drafts, setDrafts] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [savedCount, setSavedCount] = useState(null);
 
   const handleFile = (f) => {
     setFile(f);
-    setParsedTransactions(null);
+    setStatement(null);
+    setDrafts([]);
     setError(null);
+    setSavedCount(null);
   };
 
-  const handleImport = async () => {
-    if (!file) return;
+  const handleRead = async () => {
+    if (!file || !currentAccount?.id) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      const transactions = await parseFile(file, bank);
-      setParsedTransactions(transactions);
+      const parsed = await parseStatementFile(file);
+      const suggest = buildCategorySuggester({ categories, history: existing });
+      setDrafts(
+        buildImportDrafts(parsed, {
+          accountId: currentAccount.id,
+          members,
+          currentUserId,
+          existingIds: new Set(existing.map((t) => t.id)),
+          suggest,
+        })
+      );
+      setStatement(parsed);
     } catch (err) {
       console.error(err);
-      setError("Não conseguimos ler este arquivo. Confira se é uma fatura do banco selecionado.");
+      setError(
+        ERROR_MESSAGES[err.code] ||
+          "Não conseguimos ler este arquivo. Confira se é um extrato ou fatura do seu banco."
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const total = (parsedTransactions || []).reduce(
-    (sum, t) => sum + Math.abs(Number(t.amount) || 0),
-    0
-  );
+  const selected = drafts.filter((d) => d.include);
+  const missingCategories = selected.filter((d) => !d.category).length;
+  const skipped = drafts.filter((d) => d.skipReason).length;
+
+  const handleSave = async () => {
+    if (!selected.length || missingCategories || saving) return;
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      await createImportedTransactions({
+        drafts: selected,
+        statement,
+        currentAccountId: currentAccount.id,
+      });
+      setSavedCount(selected.length);
+    } catch (err) {
+      console.error(err);
+      setError("Não foi possível salvar as transações. Verifique sua conexão e tente novamente.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Name printed on the statement → account member
+  const holders = useMemo(() => {
+    const map = {};
+    (statement?.holders || []).forEach((name) => {
+      map[name] = matchCardholder(name, members);
+    });
+    return map;
+  }, [statement, members]);
+
+  const memberLabel = (m) =>
+    m.id === currentUserId ? "Você" : getFirstName(m.name, m.email);
+
+  const isCard = statement?.kind === "credit_card";
+  const mismatch = statement?.check && !statement.check.ok
+    ? Object.keys(statement.check.expected).find(
+        (k) => Math.abs(statement.check.expected[k] - statement.check.actual[k]) >= 0.01
+      )
+    : null;
+
+  /* -------------------- Done -------------------- */
+  if (savedCount != null) {
+    return (
+      <Box display="flex" flexDirection="column" alignItems="center" gap={1.5} py={3} textAlign="center">
+        <CheckCircle color="primary" sx={{ fontSize: 48 }} />
+        <Typography variant="h6" fontWeight={700}>
+          {savedCount} {savedCount === 1 ? "transação importada" : "transações importadas"}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {isCard
+            ? `Lançadas em ${formatShortDate(drafts[0]?.date)}, mês de vencimento da fatura.`
+            : "Você pode editar qualquer uma delas na tela de transações."}
+        </Typography>
+        <Box display="flex" gap={1.5} width="100%" mt={1}>
+          <Button fullWidth variant="outlined" onClick={() => handleFile(null)}>
+            Importar outro
+          </Button>
+          <Button fullWidth variant="contained" onClick={onClose}>
+            Concluir
+          </Button>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
-      {/* BANK */}
-      <Box>
-        <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ display: "block", mb: 1 }}>
-          Banco da fatura
-        </Typography>
-        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1 }}>
-          {BANKS.map((b) => {
-            const active = bank === b.id;
-            return (
-              <ButtonBase
-                key={b.id}
-                disabled={!b.available}
-                onClick={() => {
-                  setBank(b.id);
-                  handleFile(null);
-                }}
-                sx={(theme) => ({
-                  p: 1.25,
-                  gap: 1.25,
-                  borderRadius: 3,
-                  justifyContent: "flex-start",
-                  border: "1px solid",
-                  borderColor: active ? theme.palette.primary.main : "divider",
-                  backgroundColor: active ? alpha(theme.palette.primary.main, 0.06) : "background.paper",
-                  opacity: b.available ? 1 : 0.55,
-                })}
-              >
-                <Box
-                  component="img"
-                  src={b.logo}
-                  alt=""
-                  sx={{ width: 32, height: 32, borderRadius: "8px", objectFit: "contain", bgcolor: "#fff" }}
-                />
-                <Box textAlign="left" minWidth={0}>
-                  <Typography variant="body2" fontWeight={600} noWrap>
-                    {b.name}
-                  </Typography>
-                  {!b.available && (
-                    <Typography variant="caption" color="text.secondary">
-                      Em breve
-                    </Typography>
-                  )}
-                </Box>
-              </ButtonBase>
-            );
-          })}
-        </Box>
-      </Box>
-
       {/* FILE */}
-      <ButtonBase
-        component="label"
-        sx={(theme) => ({
-          p: 3,
-          borderRadius: 4,
-          border: "1.5px dashed",
-          borderColor: file ? theme.palette.primary.main : "rgba(13,31,24,0.2)",
-          backgroundColor: file ? alpha(theme.palette.primary.main, 0.04) : "transparent",
-          display: "flex",
-          flexDirection: "column",
-          gap: 1,
-          textAlign: "center",
-        })}
-      >
-        {file ? (
-          <InsertDriveFileOutlined color="primary" />
-        ) : (
-          <CloudUploadOutlined sx={{ color: "text.secondary" }} />
-        )}
-        <Typography variant="body2" fontWeight={600}>
-          {file ? file.name : "Selecionar fatura"}
-        </Typography>
-        <Typography variant="caption" color="text.secondary">
-          {file ? "Toque para trocar o arquivo" : `Formatos aceitos: ${selectedBank?.formats?.replaceAll(".", "").toUpperCase().replace(",", ", ")}`}
-        </Typography>
-        <input
-          hidden
-          type="file"
-          accept={selectedBank?.formats}
-          onChange={(e) => handleFile(e.target.files?.[0] || null)}
-        />
-      </ButtonBase>
+      {!statement && (
+        <>
+          <ButtonBase
+            component="label"
+            sx={(theme) => ({
+              p: 3,
+              borderRadius: 4,
+              border: "1.5px dashed",
+              borderColor: file ? theme.palette.primary.main : "rgba(13,31,24,0.2)",
+              backgroundColor: file ? alpha(theme.palette.primary.main, 0.04) : "transparent",
+              display: "flex",
+              flexDirection: "column",
+              gap: 1,
+              textAlign: "center",
+            })}
+          >
+            {file ? (
+              <InsertDriveFileOutlined color="primary" />
+            ) : (
+              <CloudUploadOutlined sx={{ color: "text.secondary" }} />
+            )}
+            <Typography variant="body2" fontWeight={600}>
+              {file ? file.name : "Selecionar extrato ou fatura"}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {file
+                ? "Toque para trocar o arquivo"
+                : "PDF ou CSV — o banco e o tipo de documento são identificados automaticamente"}
+            </Typography>
+            <input
+              hidden
+              type="file"
+              accept=".pdf,.csv,application/pdf,text/csv"
+              onChange={(e) => handleFile(e.target.files?.[0] || null)}
+            />
+          </ButtonBase>
 
-      <Typography variant="caption" color="text.secondary" sx={{ mt: -1.5 }}>
-        O arquivo é lido apenas no seu dispositivo e não é enviado para nenhum servidor.
-      </Typography>
+          <Box display="flex" alignItems="center" gap={1} mt={-1}>
+            <Typography variant="caption" color="text.secondary">
+              Bancos suportados:
+            </Typography>
+            {SUPPORTED_BANKS.map((b) => (
+              <Box
+                key={b.name}
+                component="img"
+                src={b.logo}
+                alt={b.name}
+                title={b.name}
+                sx={{ width: 22, height: 22, borderRadius: "6px", objectFit: "contain", bgcolor: "#fff" }}
+              />
+            ))}
+          </Box>
+
+          <Typography variant="caption" color="text.secondary" sx={{ mt: -1.5 }}>
+            O arquivo é lido apenas no seu dispositivo e não é enviado para nenhum servidor.
+          </Typography>
+        </>
+      )}
 
       {error && <Alert severity="error">{error}</Alert>}
-      {loading && <LinearProgress />}
+      {(loading || saving) && <LinearProgress />}
 
-      {!parsedTransactions && (
+      {!statement && (
         <Button
           variant="contained"
           size="large"
           disabled={!file || loading}
-          onClick={handleImport}
+          onClick={handleRead}
         >
-          {loading ? "Lendo fatura…" : "Ler fatura"}
+          {loading ? "Lendo arquivo…" : "Ler arquivo"}
         </Button>
       )}
 
-      {/* PREVIEW */}
-      {parsedTransactions && (
+      {/* REVIEW */}
+      {statement && (
         <Box display="flex" flexDirection="column" gap={1.5}>
-          <Box display="flex" alignItems="center" gap={1}>
-            <CheckCircle color="primary" fontSize="small" />
-            <Typography variant="subtitle2" flex={1}>
-              {parsedTransactions.length} transações encontradas
-            </Typography>
-            <Money value={total} variant="body2" fontWeight={700} />
-          </Box>
-
-          <Paper variant="outlined" sx={{ maxHeight: 280, overflowY: "auto" }}>
-            {parsedTransactions.length === 0 ? (
-              <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: "center" }}>
-                Nenhuma transação encontrada neste arquivo.
+          {/* BANK + TOTALS */}
+          <Paper variant="outlined" sx={{ p: 1.5, display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Box
+              component="img"
+              src={statement.bank.logo}
+              alt=""
+              sx={{ width: 36, height: 36, borderRadius: "8px", objectFit: "contain", bgcolor: "#fff" }}
+            />
+            <Box flex={1} minWidth={0}>
+              <Typography variant="body2" fontWeight={600} noWrap>
+                {isCard ? "Fatura" : "Extrato"} {statement.bank.name}
               </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {statement.transactions.length} lançamentos
+                {statement.dueDate && ` · vence ${formatShortDate(statement.dueDate)}`}
+                {statement.period && ` · ${formatShortDate(statement.period[0])} a ${formatShortDate(statement.period[1])}`}
+              </Typography>
+            </Box>
+            {isCard ? (
+              <Money value={statement.totals.out - statement.totals.in} variant="body2" fontWeight={700} />
             ) : (
-              parsedTransactions.map((t, i) => (
-                <Box key={i}>
-                  {i > 0 && <Divider />}
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 2, py: 1.25 }}>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ width: 52, flexShrink: 0, fontVariantNumeric: "tabular-nums" }}
-                    >
-                      {formatParsedDate(t.date)}
-                    </Typography>
-                    <Box flex={1} minWidth={0}>
-                      <Typography variant="body2" fontWeight={600} noWrap>
-                        {t.description || "Sem descrição"}
-                      </Typography>
-                      {t.parcel && t.parcel !== "0/0" && (
-                        <Typography variant="caption" color="text.secondary">
-                          Parcela {t.parcel}
-                        </Typography>
-                      )}
-                    </Box>
-                    <Money value={Math.abs(Number(t.amount) || 0)} variant="body2" fontWeight={600} />
-                  </Box>
-                </Box>
-              ))
+              <Box textAlign="right">
+                <Money value={statement.totals.in} sign="plus" variant="caption" fontWeight={700} component="div" sx={{ color: finance.revenue }} />
+                <Money value={statement.totals.out} sign="minus" variant="caption" fontWeight={700} component="div" sx={{ color: finance.expense }} />
+              </Box>
             )}
           </Paper>
 
-          <Alert severity="info" variant="outlined">
-            Esta é uma pré-visualização. Salvar as transações importadas na conta ainda está em desenvolvimento.
-          </Alert>
+          {statement.check?.ok && (
+            <Box display="flex" alignItems="center" gap={0.75} color="primary.main">
+              <CheckCircle sx={{ fontSize: 16 }} />
+              <Typography variant="caption" fontWeight={600}>
+                Totais conferem com {isCard ? "a fatura" : "o extrato"}
+              </Typography>
+            </Box>
+          )}
+          {mismatch && (
+            <Alert severity="warning" icon={<ErrorOutline fontSize="inherit" />}>
+              {isCard ? "A fatura" : "O extrato"} informa {CHECK_LABELS[mismatch]} de{" "}
+              {formatCurrency(Math.abs(statement.check.expected[mismatch]))}, mas somamos{" "}
+              {formatCurrency(Math.abs(statement.check.actual[mismatch]))}. Alguns lançamentos podem não ter sido lidos.
+            </Alert>
+          )}
 
-          <Button variant="outlined" onClick={() => handleFile(null)}>
-            Ler outro arquivo
-          </Button>
+          {/* HOLDERS */}
+          {statement.holders.length > 0 && (
+            <Box display="flex" flexWrap="wrap" gap={1}>
+              {statement.holders.map((name) => {
+                const member = holders[name];
+                return (
+                  <Chip
+                    key={name}
+                    size="small"
+                    variant="outlined"
+                    color={member ? "primary" : "default"}
+                    avatar={
+                      <Avatar sx={{ fontSize: 10 }}>
+                        {member ? getInitials(member.name, member.email) : "?"}
+                      </Avatar>
+                    }
+                    label={member ? `${name} · ${memberLabel(member)}` : `${name} · não é membro`}
+                  />
+                );
+              })}
+            </Box>
+          )}
+
+          {skipped > 0 && (
+            <Typography variant="caption" color="text.secondary">
+              {skipped} {skipped === 1 ? "lançamento ficou desmarcado" : "lançamentos ficaram desmarcados"}{" "}
+              (pagamentos de fatura, transferências entre contas ou já importados). Marque se quiser incluir.
+            </Typography>
+          )}
+
+          <ImportReviewList
+            drafts={drafts}
+            onChange={setDrafts}
+            categories={categories}
+            holders={holders}
+            currentUserId={currentUserId}
+            showHolder={statement.holders.length > 1}
+          />
+
+          <Box display="flex" gap={1.5}>
+            <Button variant="outlined" onClick={() => handleFile(null)} disabled={saving} sx={{ flexShrink: 0 }}>
+              Trocar
+            </Button>
+            <Button
+              variant="contained"
+              size="large"
+              fullWidth
+              onClick={handleSave}
+              disabled={!selected.length || missingCategories > 0 || saving}
+            >
+              {saving
+                ? "Importando…"
+                : missingCategories
+                ? `Faltam ${missingCategories} ${missingCategories === 1 ? "categoria" : "categorias"}`
+                : `Importar ${selected.length} ${selected.length === 1 ? "transação" : "transações"}`}
+            </Button>
+          </Box>
         </Box>
       )}
     </Box>
