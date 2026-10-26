@@ -29,19 +29,34 @@ const CSV_HEADER = /^\uFEFF?Data,Valor,Identificador,Descrição\r?$/m;
 const CSV_ROW = /^(\d{2}\/\d{2}\/\d{4}),(-?\d+(?:\.\d+)?),[^,]*,(.*)$/;
 
 // "ROSILEI PEREIRA CHAGAS - •••.446.750-•• - Banco do Estado…" → "ROSILEI PEREIRA CHAGAS"
-const counterpartyOf = (details) => details.match(/^(.+?) - [•\d.\-*]+ - /)?.[1] || null;
+// Also CNPJs ("Studio Bloco Ltda - 39.729.311/0001-21 - …") and ids wrapped mid-way ("•••. 116.990-••")
+const counterpartyOf = (details) => details.match(/^(.+?) - [•\d][•\d.\-*/ ]* - /)?.[1] || null;
+
+// Where a row (or a day / group header) can begin at the top of a page
+const ROW_START =
+  /^(?:\d{2} [A-Z]{3} \d{4}|Total de (?:entradas|saídas)|(?:Transferência|Pagamento|Compra|Resgate|Aplicação|Depósito|Estorno|Reembolso|Saque|Recarga|Débito|Crédito|Pix|Boleto)\b)/;
+
+// A row's details can run onto the next page after its amount ("13517-9"); that tail is dropped.
+// An unknown row type at the top of a page is dropped too, which the totals check then flags.
+function dropSpillover(page) {
+  const lines = page.split("\n");
+  const i = lines.findIndex((line) => ROW_START.test(line));
+  return i < 0 ? "" : lines.slice(i).join("\n");
+}
 
 function parsePdf(text) {
   const holder = text.split("\n")[0] || null;
 
-  // The page header repeats on every page and can land in the middle of a row
+  // The page header and footer repeat on every page and can land in the middle of a row
   const header = text.slice(0, text.indexOf("VALORES EM R$\n") + "VALORES EM R$\n".length);
   const start = text.indexOf("\nMovimentações\n") + 1;
   const end = text.indexOf("O saldo líquido corresponde");
-  const body = text
+  const pages = text
     .slice(start + "Movimentações\n".length, end > start ? end : undefined)
-    .split(header).join("")
-    .replace(/^(Extrato gerado dia .*|\d+ de \d+)\n/gm, "");
+    .replace(/^Tem alguma dúvida\?[\s\S]*?^\d+ de \d+\n/gm, "")
+    .replace(/^(Extrato gerado dia .*|\d+ de \d+)\n/gm, "")
+    .split(header);
+  const body = [pages[0], ...pages.slice(1).map(dropSpillover)].join("");
 
   const transactions = scan(body, PDF_ROWS, (g, state) => {
     if (g.year) {

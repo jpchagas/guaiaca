@@ -31,8 +31,11 @@ import {
   DonutLarge,
   FlagOutlined,
   Flag,
+  CreditCardOutlined,
+  CreditCard,
   Add as AddIcon,
   NotificationsNoneOutlined,
+  EventRepeatOutlined,
 } from "@mui/icons-material";
 
 import { useNavigate, Outlet, useLocation } from "react-router-dom";
@@ -45,6 +48,8 @@ import AccountSwitcher from "../components/AccountSwitcher";
 import DateSwitcher from "../components/DateSwitcher";
 import AddBudgetDialog from "../components/AddBudgetDialog";
 import AddGoalDialog from "../components/AddGoalDialog";
+import AddRecurringBillDialog from "../components/AddRecurringBillDialog";
+import AddCardDialog from "../components/AddCardDialog";
 import TransactionEntryDialog from "../components/TransactionEntryDialog";
 import NotificationsSheet from "../components/NotificationsSheet";
 
@@ -53,22 +58,27 @@ import { useNotifications } from "../hooks/useNotifications";
 import { refreshPushToken } from "../services/notifications/push";
 import { getFirstName, getInitials } from "../utils/format";
 
+// `fab`: what the + button creates on that page
 const NAV_ITEMS = [
-  { path: "/dashboard", label: "Início", icon: HomeOutlined, activeIcon: Home },
-  { path: "/dashboard/transactions", label: "Transações", icon: ReceiptLongOutlined, activeIcon: ReceiptLong },
-  { path: "/dashboard/budget", label: "Orçamento", icon: DonutLargeOutlined, activeIcon: DonutLarge },
-  { path: "/dashboard/goals", label: "Metas", icon: FlagOutlined, activeIcon: Flag },
+  { path: "/dashboard", label: "Início", icon: HomeOutlined, activeIcon: Home, fab: "transaction" },
+  { path: "/dashboard/transactions", label: "Transações", icon: ReceiptLongOutlined, activeIcon: ReceiptLong, fab: "transaction" },
+  { path: "/dashboard/cards", label: "Cartões", icon: CreditCardOutlined, activeIcon: CreditCard, fab: "card" },
+  { path: "/dashboard/budget", label: "Orçamento", icon: DonutLargeOutlined, activeIcon: DonutLarge, fab: "budget" },
+  { path: "/dashboard/goals", label: "Metas", icon: FlagOutlined, activeIcon: Flag, fab: "goal" },
 ];
 
 const FAB_LABELS = {
   transaction: "Nova transação",
-  budget: "Novo orçamento",
+  budget: "Novo orçamento ou conta fixa",
+  card: "Novo cartão",
   goal: "Nova meta",
 };
 
 export default function DashboardLayout() {
-  // Which create/edit sheet is open: "transaction" | "budget" | "goal" | null
+  // Which create/edit sheet is open: "transaction" | "card" | "budget" | "bill" | "goal" | null
   const [activeSheet, setActiveSheet] = useState(null);
+  // On Orçamento the FAB offers a budget or a recurring bill
+  const [fabMenuAnchor, setFabMenuAnchor] = useState(null);
   const [createAccountOpen, setCreateAccountOpen] = useState(false);
   const [accountDrawerOpen, setAccountDrawerOpen] = useState(false);
   const [dateDrawerOpen, setDateDrawerOpen] = useState(false);
@@ -138,8 +148,7 @@ export default function DashboardLayout() {
       ? `Olá${getFirstName(displayName, email) ? `, ${getFirstName(displayName, email)}` : ""}`
       : NAV_ITEMS[navIndex].label;
 
-  const fabAction =
-    navIndex === 2 ? "budget" : navIndex === 3 ? "goal" : "transaction";
+  const fabAction = NAV_ITEMS[navIndex].fab;
 
   const openCreate = (kind) => {
     if (!currentAccount?.id) return;
@@ -301,7 +310,7 @@ export default function DashboardLayout() {
       {/* FAB */}
       <Fab
         color="primary"
-        onClick={() => openCreate(fabAction)}
+        onClick={(e) => (fabAction === "budget" ? setFabMenuAnchor(e.currentTarget) : openCreate(fabAction))}
         disabled={!currentAccount?.id}
         aria-label={FAB_LABELS[fabAction]}
         sx={{
@@ -312,6 +321,34 @@ export default function DashboardLayout() {
       >
         <AddIcon />
       </Fab>
+
+      <Menu
+        anchorEl={fabMenuAnchor}
+        open={!!fabMenuAnchor}
+        onClose={() => setFabMenuAnchor(null)}
+        anchorOrigin={{ vertical: "top", horizontal: "right" }}
+        transformOrigin={{ vertical: "bottom", horizontal: "right" }}
+        slotProps={{ paper: { sx: { mt: -1 } } }}
+      >
+        {[
+          { kind: "budget", label: "Novo orçamento", Icon: DonutLargeOutlined },
+          { kind: "bill", label: "Nova conta fixa", Icon: EventRepeatOutlined },
+        ].map((item) => (
+          <MenuItem
+            key={item.kind}
+            onClick={() => {
+              setFabMenuAnchor(null);
+              openCreate(item.kind);
+            }}
+            sx={{ py: 1.25 }}
+          >
+            <ListItemIcon>
+              <item.Icon fontSize="small" />
+            </ListItemIcon>
+            {item.label}
+          </MenuItem>
+        ))}
+      </Menu>
 
       {/* DIALOGS */}
       <CreateAccountDialog
@@ -330,6 +367,20 @@ export default function DashboardLayout() {
 
       <AddBudgetDialog
         open={activeSheet === "budget"}
+        onClose={() => setActiveSheet(null)}
+        currentAccount={currentAccount}
+      />
+
+      <AddCardDialog
+        open={activeSheet === "card"}
+        onClose={() => setActiveSheet(null)}
+        currentAccount={currentAccount}
+        members={members}
+        currentUserId={currentUserId}
+      />
+
+      <AddRecurringBillDialog
+        open={activeSheet === "bill"}
         onClose={() => setActiveSheet(null)}
         currentAccount={currentAccount}
       />

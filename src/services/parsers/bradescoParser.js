@@ -1,14 +1,15 @@
-// Bradesco credit card statement (PDF exported from the Bradesco Cartões app).
+// Bradesco credit card statement ("Fatura Mensal" PDF from Bradesco Cartões).
 //
 // One section per card:
-//   "JOAO PEDRO CHAGAS - VISA INFINITE"
-// followed by rows of date, description, amount. Long descriptions wrap into
-// an extra item, which may also hold the installment:
-//   "13/08" / "ZP *ACADEMIA SOULFIT L" / "1/12" / "270,00"
-//   "06/12" / "TAP WEB VIP 9/10" / "878,66"
+//   "JOAO PEDRO CHAGAS" / "Cartão" / "4066 XXXX XXXX 0021"
+// followed by rows of date, description, then the city (one item per word,
+// possibly none) and the amount. The installment is either at the end of the
+// description or an item of its own; credits end in " -":
+//   "29/08" / "ZAFFARI TOTAL" / "PORTO" / "ALEGRE" / "312,92"
+//   "31/03" / "BARBARA SCHERER B" / "06/10" / "PORTO" / "ALEGRE" / "92,50"
+//   "10/09" / "PAGTO. POR DEB EM C/C" / "1.414,26 -"
 import {
   AMOUNT,
-  amountAfter,
   buildTransaction,
   parseBRL,
   resolveDate,
@@ -18,13 +19,17 @@ import {
   toRef,
 } from "../importing/statementUtils";
 
+const ROW_AMOUNT = String.raw`${AMOUNT}(?: -)?`;
+
 const ROWS = new RegExp(
   [
-    String.raw`^(?<holder>[A-ZÀ-Ý]+(?: [A-ZÀ-Ý]+)+) - [A-Z][A-Z ]+$`,
-    String.raw`^(?<day>\d{2})\/(?<month>\d{2})\n(?<desc>(?:(?!-?${AMOUNT}$)[^\n]+\n){1,3}?)(?<amount>-?${AMOUNT})$`,
+    String.raw`^(?<holder>[A-ZÀ-Ý]+(?: [A-ZÀ-Ý]+)+)\nCartão\n\d{4} X{4} X{4} (?<last4>\d{4})$`,
+    String.raw`^(?<day>\d{2})\/(?<month>\d{2})\n(?<desc>[^\n]+)\n(?<extra>(?:(?!${ROW_AMOUNT}$)[^\n]+\n){0,4}?)(?<amount>${ROW_AMOUNT})$`,
   ].join("|"),
   "gm"
 );
+
+const INSTALLMENT = /^(\d{2})\/(\d{2})$/;
 
 export default {
   kind: "credit_card",
@@ -32,16 +37,21 @@ export default {
   name: "Bradesco",
   logo: "/bradesco_logo.png",
 
-  detect: (text) => /Bradesco Cart[õo]es|Banco Bradesco/i.test(text),
+  // The bank alone isn't enough: other banks' statements list Pix to "Banco Bradesco"
+  detect: (text) => /Bradesco Cart[õo]es/i.test(text) && /^Total da fatura em real$/im.test(text),
 
   parse(text) {
-    // The app export has no due date; "Data: 03/09/2025 - 13:59" is when it was generated
-    const issued = text.match(/Data: (\d{2})\/(\d{2})\/(\d{4})/);
-    const ref = issued ? toRef(issued[2], issued[3]) : null;
+    // "Vencimento" / "10/10/2026"
+    const due = text.match(/^Vencimento\n(\d{2})\/(\d{2})\/(\d{4})$/m);
+    const ref = due ? toRef(due[2], due[3]) : null;
 
     const transactions = scanSections(text, ROWS, (g, section) => {
-      const desc = g.desc.replace(/\n/g, " ").trim();
-      const { description, installment } = splitInstallment(desc, /\s+(\d{1,2})\/(\d{1,2})$/);
+      // A standalone "06/10" item is the installment; the other extra items are the city
+      const ownLine = g.extra.split("\n").find((item) => INSTALLMENT.test(item));
+      const { description, installment } = splitInstallment(
+        ownLine ? `${g.desc} ${ownLine}` : g.desc,
+        /\s+(\d{2})\/(\d{2})$/
+      );
       return buildTransaction({
         date: resolveDate(g.day, g.month, ref),
         description,
@@ -51,10 +61,11 @@ export default {
       });
     });
 
+    const total = text.match(new RegExp(String.raw`^Total da fatura em real\n(${AMOUNT})$`, "im"));
+
     return {
-      dueDate: null,
-      issueDate: issued ? toISODate(issued[1], issued[2], issued[3]) : null,
-      total: amountAfter(text, "Total da Fatura em Real"),
+      dueDate: due ? toISODate(due[1], due[2], due[3]) : null,
+      total: total ? parseBRL(total[1]) : null,
       transactions,
     };
   },

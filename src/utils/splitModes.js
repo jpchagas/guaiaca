@@ -1,4 +1,4 @@
-import { Balance, Insights, Percent } from "@mui/icons-material";
+import { AllInclusive, Balance, Insights, Percent } from "@mui/icons-material";
 
 export const SPLIT_MODE_INFO = {
   equal: {
@@ -18,5 +18,11 @@ export const SPLIT_MODE_INFO = {
     short: "Percentual fixo",
     description: "Vocês definem quanto cada pessoa paga, por exemplo 60% e 40%.",
     Icon: Percent,
+  },
+  joint: {
+    label: "Conta única",
+    short: "Conta única",
+    description: "Sem divisão: tudo o que vocês ganham e gastam é dos dois, sem acerto de contas.",
+    Icon: AllInclusive,
   },
 };

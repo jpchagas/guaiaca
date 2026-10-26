@@ -3,9 +3,17 @@ import { Box, ButtonBase, Typography } from "@mui/material";
 import CategoryAvatar from "./ui/CategoryAvatar";
 import Money from "./ui/Money";
 import { finance } from "../theme";
-import { METHOD_LABELS } from "../utils/format";
+import { METHOD_LABELS, formatCurrency } from "../utils/format";
 
-export default function TransactionRow({ tx, category, onClick, showDate }) {
+/** "70% de R$ 10.000,00": this part's share of a split income (see split/incomeShare.js). */
+function incomeSplitLabel({ part, pct, gross }) {
+  const share = part === "shared" ? pct : 1 - pct;
+  const percent = String(Math.round(share * 1000) / 10).replace(".", ",");
+  return `${percent}% de ${formatCurrency(gross)}`;
+}
+
+/** `source` names the card or bank the money moved through (see utils/banks.js sourceLabel). */
+export default function TransactionRow({ tx, category, onClick, showDate, source }) {
   const isRevenue = tx.classification === "revenue";
   const color = isRevenue
     ? finance.revenue
@@ -16,6 +24,8 @@ export default function TransactionRow({ tx, category, onClick, showDate }) {
   const meta = [
     category?.name || "Sem categoria",
     tx.method === "credit_card" ? "Cartão" : METHOD_LABELS[tx.method],
+    source,
+    tx.incomeSplit && incomeSplitLabel(tx.incomeSplit),
     tx.installment ? `${tx.installment.current}/${tx.installment.total}` : null,
     showDate,
   ].filter(Boolean);

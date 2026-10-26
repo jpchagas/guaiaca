@@ -24,14 +24,15 @@ import {
   query,
   where,
   onSnapshot,
-  doc,
-  deleteDoc,
 } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 
 import { useAccount } from "../context/AccountContext";
 import { useDate } from "../context/DateContext";
 import { useCategoryLookup } from "../hooks/useCategories";
+import { useCards } from "../hooks/useCards";
+import { sourceLabel } from "../utils/banks";
+import { deleteTransaction } from "../services/transactions/transactionService";
 
 import TransactionEntryDialog from "../components/TransactionEntryDialog";
 import TransactionRow from "../components/TransactionRow";
@@ -60,9 +61,10 @@ export default function Transactions() {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
 
-  const { currentAccount, members } = useAccount();
+  const { currentAccount, members, accounts, transactions: allTransactions } = useAccount();
   const { selectedMonth, selectedYear } = useDate();
   const { byId: categoriesById } = useCategoryLookup();
+  const { byId: cardsById } = useCards(accounts.map((a) => a.id));
   const { openCreate } = useOutletContext();
   const currentUserId = auth.currentUser?.uid;
 
@@ -73,6 +75,10 @@ export default function Transactions() {
   // Deletions wait for the undo window before hitting Firestore
   const [pendingDeleteIds, setPendingDeleteIds] = useState([]);
   const deleteTimers = useRef({});
+  // Deleting a split income also removes its other part and re-splits the month
+  const deleteCtx = useRef({});
+  deleteCtx.current = { accounts, transactions: allTransactions };
+  const pendingTxs = useRef({});
   const [snackbar, setSnackbar] = useState({ open: false, message: "", txId: null });
 
   /* -------------------- Realtime listener -------------------- */
@@ -109,10 +115,11 @@ export default function Transactions() {
   // Commit any pending deletes if the page unmounts
   useEffect(() => {
     const timers = deleteTimers.current;
+    const pending = pendingTxs.current;
     return () => {
       Object.entries(timers).forEach(([id, t]) => {
         clearTimeout(t);
-        deleteDoc(doc(db, "transactions", id)).catch(console.error);
+        deleteTransaction(pending[id], deleteCtx.current).catch(console.error);
       });
     };
   }, []);
@@ -147,10 +154,11 @@ export default function Transactions() {
       const categoryName = categoriesById[tx.category]?.name || "";
       return (
         (tx.description || "").toLowerCase().includes(term) ||
-        categoryName.toLowerCase().includes(term)
+        categoryName.toLowerCase().includes(term) ||
+        (sourceLabel(tx, cardsById) || "").toLowerCase().includes(term)
       );
     });
-  }, [monthTransactions, filter, search, categoriesById]);
+  }, [monthTransactions, filter, search, categoriesById, cardsById]);
 
   const groups = useMemo(() => {
     const map = new Map();
@@ -177,14 +185,16 @@ export default function Transactions() {
     setPendingDeleteIds((ids) => [...ids, tx.id]);
     setSnackbar({ open: true, message: "Transação excluída", txId: tx.id });
 
+    pendingTxs.current[tx.id] = tx;
     deleteTimers.current[tx.id] = setTimeout(async () => {
       delete deleteTimers.current[tx.id];
       try {
-        await deleteDoc(doc(db, "transactions", tx.id));
+        await deleteTransaction(tx, deleteCtx.current);
       } catch (err) {
         console.error(err);
         setSnackbar({ open: true, message: "Não foi possível excluir a transação.", txId: null });
       } finally {
+        delete pendingTxs.current[tx.id];
         setPendingDeleteIds((ids) => ids.filter((id) => id !== tx.id));
       }
     }, UNDO_WINDOW_MS);
@@ -195,6 +205,7 @@ export default function Transactions() {
     if (!id) return;
     clearTimeout(deleteTimers.current[id]);
     delete deleteTimers.current[id];
+    delete pendingTxs.current[id];
     setPendingDeleteIds((ids) => ids.filter((x) => x !== id));
     setSnackbar((s) => ({ ...s, open: false }));
   };
@@ -325,6 +336,7 @@ export default function Transactions() {
                       <TransactionRow
                         tx={tx}
                         category={categoriesById[tx.category]}
+                        source={sourceLabel(tx, cardsById)}
                         onClick={() => openEdit(tx)}
                       />
                     </Box>

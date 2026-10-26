@@ -23,6 +23,7 @@ import CategoryAvatar from "../components/ui/CategoryAvatar";
 import EmptyState from "../components/ui/EmptyState";
 import SectionHeader from "../components/ui/SectionHeader";
 import AddBudgetDialog from "../components/AddBudgetDialog";
+import RecurringBillsSection from "../components/RecurringBillsSection";
 import { DEFAULT_ALERT_AT } from "../services/budgets/budgetService";
 import { MONTHS, formatCurrency, isInMonth } from "../utils/format";
 
@@ -128,21 +129,36 @@ export default function Budget() {
     );
   }
 
+  const remaining = summary.limit - summary.spent;
+
+  const billsSection = (
+    <RecurringBillsSection
+      currentAccount={currentAccount}
+      transactions={transactions}
+      categoriesById={categoriesById}
+      year={selectedYear}
+      month={selectedMonth}
+      onAdd={() => openCreate("bill")}
+    />
+  );
+
   if (!budgets.length) {
     return (
-      <Paper variant="outlined">
-        <EmptyState
-          icon={DonutLargeOutlined}
-          title="Defina seus limites de gasto"
-          description="Crie orçamentos mensais por categoria e acompanhe quanto ainda pode gastar."
-          actionLabel="Criar orçamento"
-          onAction={() => openCreate("budget")}
-        />
-      </Paper>
+      <Box display="flex" flexDirection="column" gap={3}>
+        <Paper variant="outlined">
+          <EmptyState
+            icon={DonutLargeOutlined}
+            title="Defina seus limites de gasto"
+            description="Crie orçamentos mensais por categoria e acompanhe quanto ainda pode gastar."
+            actionLabel="Criar orçamento"
+            onAction={() => openCreate("budget")}
+          />
+        </Paper>
+
+        {billsSection}
+      </Box>
     );
   }
-
-  const remaining = summary.limit - summary.spent;
 
   /* -------------------- UI -------------------- */
   return (
@@ -246,6 +262,9 @@ export default function Budget() {
           })}
         </Paper>
       </Box>
+
+      {/* RECURRING BILLS */}
+      {billsSection}
 
       <AddBudgetDialog
         open={editOpen}

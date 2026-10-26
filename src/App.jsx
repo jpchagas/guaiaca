@@ -22,6 +22,7 @@ const DashboardLayout = lazy(() => import("./pages/DashboardLayout"));
 const Overview = lazy(() => import("./pages/Overview"));
 const Transactions = lazy(() => import("./pages/Transactions"));
 const Budget = lazy(() => import("./pages/Budget"));
+const Cards = lazy(() => import("./pages/Cards"));
 const Goals = lazy(() => import("./pages/Goals")); // ✅ NEW
 
 /* -------------------- Loader -------------------- */
@@ -169,6 +170,7 @@ function App() {
             >
               <Route index element={<Overview />} />
               <Route path="transactions" element={<Transactions />} />
+              <Route path="cards" element={<Cards />} />
               <Route path="budget" element={<Budget />} />
               <Route path="goals" element={<Goals />} /> {/* ✅ NEW */}
             </Route>

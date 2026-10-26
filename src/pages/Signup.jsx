@@ -54,6 +54,8 @@ export default function Signup() {
       await setDoc(doc(db, "users", user.uid), {
         name: name.trim(),
         email: email.trim().toLowerCase(),
+        // Where partners in a shared account send this user's personal transactions
+        personalAccountId: accountRef.id,
         createdAt: serverTimestamp(),
       });
 

@@ -30,7 +30,9 @@ export default {
   name: "BTG Pactual",
   logo: "/btg_logo.png",
 
-  detect: (text) => /30\.306\.294\/0001-45|BTG Pactual S\.A/i.test(text),
+  // The bank alone isn't enough: other banks' statements list Pix to "BANCO BTG PACTUAL S.A."
+  detect: (text) =>
+    /30\.306\.294\/0001-45|BTG Pactual S\.A/i.test(text) && /^Lançamentos do cartão /m.test(text),
 
   parse(text) {
     // "Vencimento: 07/10" + "fatura de Outubro de 2025"

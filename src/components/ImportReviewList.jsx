@@ -2,12 +2,14 @@ import { memo, useCallback } from "react";
 import {
   Box,
   Checkbox,
+  Chip,
   Divider,
   MenuItem,
   Paper,
   TextField,
   Typography,
 } from "@mui/material";
+import { SwapHoriz } from "@mui/icons-material";
 
 import CategoryAvatar from "./ui/CategoryAvatar";
 import Money from "./ui/Money";
@@ -21,9 +23,8 @@ const AMOUNT_COLORS = {
   investment: finance.investment,
 };
 
-const ReviewRow = memo(function ReviewRow({ draft, categories, holderLabel, onToggle, onCategory }) {
+const ReviewRow = memo(function ReviewRow({ draft, categories, holderLabel, targetLabel, splitLabel, onToggle, onCategory, onTarget }) {
   const { row } = draft;
-  const missing = draft.include && !draft.category;
 
   const details = [
     row.installment && `Parcela ${row.installment.current}/${row.installment.total}`,
@@ -67,7 +68,6 @@ const ReviewRow = memo(function ReviewRow({ draft, categories, holderLabel, onTo
           fullWidth
           value={draft.category}
           onChange={(e) => onCategory(draft.id, e.target.value)}
-          error={missing}
           SelectProps={{
             displayEmpty: true,
             MenuProps: { PaperProps: { sx: { maxHeight: 360 } } },
@@ -75,8 +75,8 @@ const ReviewRow = memo(function ReviewRow({ draft, categories, holderLabel, onTo
               const c = categories.find((x) => x.id === id);
               if (!c) {
                 return (
-                  <Typography variant="body2" color="error">
-                    Escolha uma categoria
+                  <Typography variant="body2" color="text.secondary">
+                    Sem categoria (Outros)
                   </Typography>
                 );
               }
@@ -98,6 +98,24 @@ const ReviewRow = memo(function ReviewRow({ draft, categories, holderLabel, onTo
           ))}
         </TextField>
       )}
+
+      {draft.include && targetLabel && (
+        <Box display="flex" alignItems="center" gap={1} mt={0.75} pl={5.25} pr={1} minWidth={0}>
+          <Chip
+            size="small"
+            variant="outlined"
+            icon={onTarget ? <SwapHoriz /> : undefined}
+            label={targetLabel}
+            onClick={onTarget ? () => onTarget(draft.id) : undefined}
+            sx={{ flexShrink: 0 }}
+          />
+          {splitLabel && (
+            <Typography variant="caption" color="text.secondary" noWrap>
+              {splitLabel}
+            </Typography>
+          )}
+        </Box>
+      )}
     </Box>
   );
 });
@@ -105,9 +123,20 @@ const ReviewRow = memo(function ReviewRow({ draft, categories, holderLabel, onTo
 /**
  * Review step for imported rows: include/exclude each one and set its
  * category. Picking a category also fills other uncategorized rows with the
- * same description.
+ * same description. In accounts that split per person, `destinationsFor`
+ * gives each row's choices (shared or personal; see sharedIncomeService.js)
+ * and `splitLabelFor` describes how a shared income is split.
  */
-export default function ImportReviewList({ drafts, onChange, categories, holders, currentUserId, showHolder }) {
+export default function ImportReviewList({
+  drafts,
+  onChange,
+  categories,
+  holders,
+  currentUserId,
+  showHolder,
+  destinationsFor,
+  splitLabelFor,
+}) {
   const toggle = useCallback(
     (id, include) => onChange((list) => list.map((d) => (d.id === id ? { ...d, include } : d))),
     [onChange]
@@ -126,6 +155,30 @@ export default function ImportReviewList({ drafts, onChange, categories, holders
     [onChange]
   );
 
+  // Tapping the chip moves the row to the next destination it can go to
+  const cycleTarget = useCallback(
+    (id) =>
+      onChange((list) =>
+        list.map((d) => {
+          if (d.id !== id) return d;
+          const options = destinationsFor(d).filter((o) => !o.disabled);
+          const next = options[(options.findIndex((o) => o.value === d.target) + 1) % options.length];
+          return next ? { ...d, target: next.value } : d;
+        })
+      ),
+    [onChange, destinationsFor]
+  );
+
+  const targetProps = (draft) => {
+    const options = destinationsFor?.(draft) || [];
+    if (!options.length) return {};
+    return {
+      targetLabel: options.find((o) => o.value === draft.target)?.label || "—",
+      splitLabel: splitLabelFor?.(draft) || null,
+      onTarget: options.filter((o) => !o.disabled).length > 1 ? cycleTarget : undefined,
+    };
+  };
+
   const holderLabel = (draft) => {
     if (!showHolder || !draft.row.holder) return null;
     const member = holders[draft.row.holder];
@@ -142,6 +195,7 @@ export default function ImportReviewList({ drafts, onChange, categories, holders
             draft={d}
             categories={categories}
             holderLabel={holderLabel(d)}
+            {...targetProps(d)}
             onToggle={toggle}
             onCategory={setCategory}
           />

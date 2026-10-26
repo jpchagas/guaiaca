@@ -45,15 +45,16 @@ export default function SplitSummaryCard({
   const memberOf = (id) => members.find((x) => x.id === id);
 
   const modeInfo = SPLIT_MODE_INFO[split.mode];
+  const isJoint = split.mode === "joint";
 
   return (
     <Paper variant="outlined" sx={{ p: 2.5 }}>
       {/* HEADER */}
       <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
         <Box minWidth={0}>
-          <Typography variant="subtitle2">Divisão do mês</Typography>
+          <Typography variant="subtitle2">{isJoint ? "Caixa do mês" : "Divisão do mês"}</Typography>
           <Typography variant="caption" color="text.secondary">
-            Despesas compartilhadas
+            {isJoint ? "Despesas da conta" : "Despesas compartilhadas"}
           </Typography>
           <Money value={split.total} component="div" variant="h6" fontWeight={700} />
         </Box>
@@ -69,7 +70,9 @@ export default function SplitSummaryCard({
         </Button>
       </Box>
 
-      {memberIds.length < 2 ? (
+      {isJoint ? (
+        <JointSummary split={split} nameOf={nameOf} memberOf={memberOf} />
+      ) : memberIds.length < 2 ? (
         <Typography variant="body2" color="text.secondary" mt={2}>
           Convide outra pessoa para esta conta para dividir as despesas.
         </Typography>
@@ -221,5 +224,72 @@ export default function SplitSummaryCard({
         </>
       )}
     </Paper>
+  );
+}
+
+/** Conta única: one pooled budget, so show the totals and who brought in / paid what. */
+function JointSummary({ split, nameOf, memberOf }) {
+  return (
+    <>
+      <Box
+        sx={{
+          mt: 2,
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: 1,
+          p: 1.25,
+          borderRadius: 2.5,
+          bgcolor: "rgba(13,31,24,0.035)",
+        }}
+      >
+        {[
+          { label: "Renda", value: split.totalIncome },
+          { label: "Despesas", value: split.total },
+          { label: "Sobra", value: split.remaining },
+        ].map((item) => (
+          <Box key={item.label} minWidth={0}>
+            <Typography variant="caption" color="text.secondary" component="div">
+              {item.label}
+            </Typography>
+            <Money
+              value={item.value}
+              component="div"
+              variant="body2"
+              fontWeight={700}
+              sx={{
+                color: item.label === "Sobra" && item.value < 0 ? "error.main" : "text.primary",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            />
+          </Box>
+        ))}
+      </Box>
+
+      <Typography variant="caption" color="text.secondary" component="div" mt={2}>
+        Tudo o que entra e sai é dos dois, então não há acerto de contas.
+      </Typography>
+
+      {split.rows.length > 1 && (
+        <Box display="flex" flexDirection="column" gap={1.25} mt={1.5}>
+          {split.rows.map((row) => {
+            const m = memberOf(row.id);
+            return (
+              <Box key={row.id} display="flex" alignItems="center" gap={1.5}>
+                <Avatar sx={{ width: 30, height: 30, fontSize: 12, fontWeight: 700, bgcolor: "secondary.main" }}>
+                  {getInitials(m?.name, m?.email)}
+                </Avatar>
+                <Typography variant="body2" fontWeight={600} noWrap sx={{ flex: 1 }}>
+                  {nameOf(row.id)}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: "tabular-nums" }}>
+                  entrou {formatCurrency(row.income)} · pagou {formatCurrency(row.paid)}
+                </Typography>
+              </Box>
+            );
+          })}
+        </Box>
+      )}
+    </>
   );
 }

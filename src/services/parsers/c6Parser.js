@@ -33,7 +33,9 @@ export default {
   name: "C6 Bank",
   logo: "/c6_logo.png",
 
-  detect: (text) => /31\.872\.495\/0001-72|BANCO C6 S\.A/i.test(text),
+  // The bank alone isn't enough: other banks' statements list Pix to "BANCO C6 S.A."
+  detect: (text) =>
+    /31\.872\.495\/0001-72|BANCO C6 S\.A/i.test(text) && /^Subtotal deste cartão$/m.test(text),
 
   parse(text) {
     // "Vencimento:" / "10/09/2025"

@@ -19,6 +19,9 @@ import {
   computeSplit,
   validateFixedShares,
 } from "../services/split/computeSplit";
+import { rebalanceIncomeShares } from "../services/split/sharedIncomeService";
+import { useAccount } from "../context/AccountContext";
+import { useDate } from "../context/DateContext";
 import { SPLIT_MODE_INFO } from "../utils/splitModes";
 import { formatCurrency, getFirstName } from "../utils/format";
 
@@ -44,6 +47,9 @@ export default function SplitSettingsDialog({
   monthTransactions,
   currentUserId,
 }) {
+  const { transactions } = useAccount();
+  const { selectedMonth, selectedYear } = useDate();
+
   const memberIds = useMemo(() => account?.members || [], [account?.members]);
 
   const [mode, setMode] = useState("equal");
@@ -109,6 +115,13 @@ export default function SplitSettingsDialog({
     try {
       const split = mode === "fixed" ? { mode, shares: numericShares } : { mode };
       await updateDoc(doc(db, "accounts", account.id), { split });
+      // Shared incomes of the month follow the new rule; past months keep theirs
+      await rebalanceIncomeShares({
+        account: { ...account, split },
+        transactions,
+        year: selectedYear,
+        month: selectedMonth,
+      }).catch(console.error);
       setSaving(false);
       onClose();
     } catch (err) {
@@ -225,18 +238,25 @@ export default function SplitSettingsDialog({
           <Typography variant="caption" color="text.secondary" fontWeight={600} component="div" mb={1}>
             Prévia com as despesas deste mês ({formatCurrency(preview.total)})
           </Typography>
-          <Box display="flex" flexDirection="column" gap={0.75}>
-            {preview.rows.map((row) => (
-              <Box key={row.id} display="flex" justifyContent="space-between" gap={1}>
-                <Typography variant="body2" noWrap>
-                  {nameOf(row.id)} · {`${Math.round(row.share * 1000) / 10}%`.replace(".", ",")}
-                </Typography>
-                <Typography variant="body2" fontWeight={700} sx={{ fontVariantNumeric: "tabular-nums" }}>
-                  {formatCurrency(row.owed)}
-                </Typography>
-              </Box>
-            ))}
-          </Box>
+          {mode === "joint" ? (
+            <Typography variant="body2">
+              Renda de {formatCurrency(preview.totalIncome)} e despesas de {formatCurrency(preview.total)} no
+              mesmo caixa: sobra {formatCurrency(preview.remaining)}, sem transferências entre vocês.
+            </Typography>
+          ) : (
+            <Box display="flex" flexDirection="column" gap={0.75}>
+              {preview.rows.map((row) => (
+                <Box key={row.id} display="flex" justifyContent="space-between" gap={1}>
+                  <Typography variant="body2" noWrap>
+                    {nameOf(row.id)} · {`${Math.round(row.share * 1000) / 10}%`.replace(".", ",")}
+                  </Typography>
+                  <Typography variant="body2" fontWeight={700} sx={{ fontVariantNumeric: "tabular-nums" }}>
+                    {formatCurrency(row.owed)}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          )}
           {preview.warning === "noIncome" && (
             <Typography variant="caption" color="text.secondary" component="div" mt={1}>
               Ainda não há receitas com responsável neste mês. A prévia usa divisão igual.

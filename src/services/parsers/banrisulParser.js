@@ -31,7 +31,9 @@ export default {
   name: "Banrisul",
   logo: "/banrisul_logo.png",
 
-  detect: (text) => /92\.702\.067\/0001-96|BANRISUL S\.A/i.test(text),
+  // The bank alone isn't enough: other banks' statements list Pix to "BANRISUL S.A."
+  detect: (text) =>
+    /92\.702\.067\/0001-96|BANRISUL S\.A/i.test(text) && /^HISTÓRICO DE TRANSAÇÕES$/m.test(text),
 
   parse(text) {
     // "Vencimento: 10/02/2026"

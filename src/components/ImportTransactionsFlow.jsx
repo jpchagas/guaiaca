@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import {
   Alert,
@@ -25,11 +25,17 @@ import { matchCardholder } from "../services/importing/matchCardholder";
 import { buildCategorySuggester } from "../services/importing/suggestCategory";
 import { buildImportDrafts } from "../services/importing/importDrafts";
 import { createImportedTransactions } from "../services/transactions/transactionService";
+import { findCardForBill, resolveImportCard } from "../services/cards/cardService";
+import { isSplitAccount, isSplitIncome, planIncomeSplit } from "../services/split/incomeShare";
+import { defaultTarget, destinationOptions } from "../services/split/sharedIncomeService";
 import { useAccount } from "../context/AccountContext";
 import { useCategories } from "../hooks/useCategories";
+import { useCards } from "../hooks/useCards";
+import { bankIdOf, bankInfo } from "../utils/banks";
 import ImportReviewList from "./ImportReviewList";
 import Money from "./ui/Money";
 import { finance } from "../theme";
+import { normalizeCategoryKey } from "../utils/categoryVisuals";
 import { formatCurrency, formatShortDate, getFirstName, getInitials } from "../utils/format";
 
 const ERROR_MESSAGES = {
@@ -42,8 +48,9 @@ const ERROR_MESSAGES = {
 const CHECK_LABELS = { in: "entradas", out: "saídas", net: "total" };
 
 export default function ImportTransactionsFlow({ currentAccount, members = [], currentUserId, onClose }) {
-  const { transactions: existing } = useAccount();
+  const { transactions: existing, accounts } = useAccount();
   const categories = useCategories();
+  const { cards } = useCards(accounts.map((a) => a.id));
 
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -77,7 +84,7 @@ export default function ImportTransactionsFlow({ currentAccount, members = [], c
           currentUserId,
           existingIds: new Set(existing.map((t) => t.id)),
           suggest,
-        })
+        }).map((d) => ({ ...d, target: defaultTarget(currentAccount) }))
       );
       setStatement(parsed);
     } catch (err) {
@@ -92,25 +99,98 @@ export default function ImportTransactionsFlow({ currentAccount, members = [], c
   };
 
   const selected = drafts.filter((d) => d.include);
-  const missingCategories = selected.filter((d) => !d.category).length;
+  // Rows left without a category are saved as "Outros" and can be edited later
+  const fallbackCategory = categories.find((c) => normalizeCategoryKey(c.name) === "outros")?.id || "";
+  const uncategorized = selected.filter((d) => !d.category).length;
   const skipped = drafts.filter((d) => d.skipReason).length;
 
+  // A card bill goes to one card: an existing one of that bank sharing a card number, or a new one
+  const isCard = statement?.kind === "credit_card";
+  const bank = statement ? bankIdOf(statement.bank.id) : null;
+  const billLast4s = useMemo(
+    () => [...new Set((statement?.transactions || []).map((t) => t.cardLast4).filter(Boolean))],
+    [statement]
+  );
+  const billCard = isCard ? findCardForBill(cards, bank, billLast4s) : null;
+
+  // Shared or personal per row, in accounts that split per person (see split/incomeShare.js)
+  const categoriesById = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories]);
+  const ctx = { currentAccount, accounts, members, transactions: existing, categoriesById };
+
+  const destinationsFor = useCallback(
+    (d) => destinationOptions({ currentAccount, accounts, members, responsibleUserId: d.responsibleUserId }),
+    [currentAccount, accounts, members]
+  );
+
+  const splitLabelFor = useCallback(
+    (d) => {
+      const account = accounts.find((a) => a.id === d.target);
+      if (
+        !isSplitAccount(account) ||
+        !isSplitIncome(d.classification, categoriesById[d.category]) ||
+        !(account.members || []).includes(d.responsibleUserId)
+      ) {
+        return null;
+      }
+      const { shared, personal } = planIncomeSplit({
+        account,
+        responsibleUserId: d.responsibleUserId,
+        amount: d.row.amount,
+        date: d.date,
+        transactions: existing,
+        excludeIds: [d.id, `${d.id}_p`],
+      });
+      return `${formatCurrency(shared)} compartilhado · ${formatCurrency(personal)} pessoal`;
+    },
+    [accounts, categoriesById, existing]
+  );
+
+  const bulkTargets = destinationsFor({ responsibleUserId: currentUserId }).map((o) =>
+    o.value === "personal" ? { ...o, label: "Pessoal", disabled: false } : o
+  );
+
+  // Rows that can't go somewhere (a partner without a personal account yet) keep their target
+  const sendAllTo = (target) =>
+    setDrafts((list) =>
+      list.map((d) =>
+        d.include && destinationsFor(d).some((o) => o.value === target && !o.disabled) ? { ...d, target } : d
+      )
+    );
+
   const handleSave = async () => {
-    if (!selected.length || missingCategories || saving) return;
+    if (!selected.length || saving) return;
 
     setSaving(true);
     setError(null);
 
     try {
+      const cardId = isCard
+        ? await resolveImportCard({
+            cards,
+            accountId: currentAccount.id,
+            bank,
+            last4s: billLast4s,
+            ownerId: matchCardholder(statement.holders[0], members)?.id || currentUserId || null,
+          })
+        : null;
+
       await createImportedTransactions({
-        drafts: selected,
+        drafts: selected.map((d) => (d.category ? d : { ...d, category: fallbackCategory })),
         statement,
         currentAccountId: currentAccount.id,
+        cardId,
+        ctx,
       });
       setSavedCount(selected.length);
     } catch (err) {
       console.error(err);
-      setError("Não foi possível salvar as transações. Verifique sua conexão e tente novamente.");
+      setError(
+        err.code === "noPersonalAccount"
+          ? "Alguém ainda não abriu o app desde a atualização, então a conta pessoal dessa pessoa não está disponível. Mova esses lançamentos para a conta compartilhada ou peça para abrir o app uma vez."
+          : err.code === "permission-denied"
+          ? "Sem permissão para salvar em uma das contas pessoais escolhidas."
+          : "Não foi possível salvar as transações. Verifique sua conexão e tente novamente."
+      );
     } finally {
       setSaving(false);
     }
@@ -128,7 +208,6 @@ export default function ImportTransactionsFlow({ currentAccount, members = [], c
   const memberLabel = (m) =>
     m.id === currentUserId ? "Você" : getFirstName(m.name, m.email);
 
-  const isCard = statement?.kind === "credit_card";
   const mismatch = statement?.check && !statement.check.ok
     ? Object.keys(statement.check.expected).find(
         (k) => Math.abs(statement.check.expected[k] - statement.check.actual[k]) >= 0.01
@@ -283,6 +362,14 @@ export default function ImportTransactionsFlow({ currentAccount, members = [], c
             </Alert>
           )}
 
+          {isCard && (
+            <Typography variant="caption" color="text.secondary">
+              {billCard
+                ? `Vai para o cartão ${billCard.name}.`
+                : `Vamos criar o cartão ${bankInfo(bank).name}${billLast4s[0] ? ` (final ${billLast4s.join(", ")})` : ""}. Você pode renomeá-lo e definir o limite na aba Cartões.`}
+            </Typography>
+          )}
+
           {/* HOLDERS */}
           {statement.holders.length > 0 && (
             <Box display="flex" flexWrap="wrap" gap={1}>
@@ -313,6 +400,24 @@ export default function ImportTransactionsFlow({ currentAccount, members = [], c
             </Typography>
           )}
 
+          {uncategorized > 0 && (
+            <Typography variant="caption" color="text.secondary">
+              {uncategorized} {uncategorized === 1 ? "lançamento sem categoria vai" : "lançamentos sem categoria vão"} para
+              "Outros". Você pode mudar depois, editando a transação.
+            </Typography>
+          )}
+
+          {bulkTargets.length > 0 && (
+            <Box display="flex" alignItems="center" flexWrap="wrap" gap={1}>
+              <Typography variant="caption" color="text.secondary">
+                Enviar todos para:
+              </Typography>
+              {bulkTargets.map((o) => (
+                <Chip key={o.value} size="small" label={o.label} onClick={() => sendAllTo(o.value)} />
+              ))}
+            </Box>
+          )}
+
           <ImportReviewList
             drafts={drafts}
             onChange={setDrafts}
@@ -320,6 +425,8 @@ export default function ImportTransactionsFlow({ currentAccount, members = [], c
             holders={holders}
             currentUserId={currentUserId}
             showHolder={statement.holders.length > 1}
+            destinationsFor={destinationsFor}
+            splitLabelFor={splitLabelFor}
           />
 
           <Box display="flex" gap={1.5}>
@@ -331,12 +438,10 @@ export default function ImportTransactionsFlow({ currentAccount, members = [], c
               size="large"
               fullWidth
               onClick={handleSave}
-              disabled={!selected.length || missingCategories > 0 || saving}
+              disabled={!selected.length || saving}
             >
               {saving
                 ? "Importando…"
-                : missingCategories
-                ? `Faltam ${missingCategories} ${missingCategories === 1 ? "categoria" : "categorias"}`
                 : `Importar ${selected.length} ${selected.length === 1 ? "transação" : "transações"}`}
             </Button>
           </Box>

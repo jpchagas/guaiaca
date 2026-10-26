@@ -1,10 +1,12 @@
-import { createContext, useContext, useEffect, useState, useMemo } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useMemo } from "react";
 import { auth, db } from "../firebaseConfig";
 import {
   collection,
+  doc,
   query,
   where,
   onSnapshot,
+  setDoc,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { useDate } from "./DateContext";
@@ -23,6 +25,9 @@ export function AccountProvider({ children }) {
 
   const { selectedMonth, selectedYear } = useDate();
 
+  // users/{uid}.personalAccountId lets partners send personal transactions there; checked once per session
+  const personalSynced = useRef(false);
+
   // ✅ SINGLE SOURCE OF TRUTH
   const currentAccount = useMemo(() => {
     return accounts.find((acc) => acc.id === currentAccountId) || null;
@@ -39,6 +44,7 @@ export function AccountProvider({ children }) {
       if (unsubscribeMembers) unsubscribeMembers();
 
       if (!user) {
+        personalSynced.current = false;
         setAccounts([]);
         setTransactions([]);
         setBalancesByAccountId({});
@@ -62,6 +68,12 @@ export function AccountProvider({ children }) {
         }));
 
         setAccounts(accountsData);
+
+        const personal = accountsData.find((a) => a.type === "personal" && a.ownerId === user.uid);
+        if (personal && !personalSynced.current) {
+          personalSynced.current = true;
+          setDoc(doc(db, "users", user.uid), { personalAccountId: personal.id }, { merge: true }).catch(console.error);
+        }
 
         // ✅ RESOLVE ACCOUNT ID SAFELY
         const stored = localStorage.getItem("currentAccountId");

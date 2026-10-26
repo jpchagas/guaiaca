@@ -1,0 +1,160 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* -------------------- HELPERS -------------------- */
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function userId() {
+      return request.auth.uid;
+    }
+
+    function isAccountMember(accountId) {
+      return isAuthenticated()
+        && accountId != null
+        && get(/databases/$(database)/documents/accounts/$(accountId))
+          .data.members.hasAny([userId()]);
+    }
+
+    function isAccountOwner(accountId) {
+      return isAuthenticated()
+        && accountId != null
+        && get(/databases/$(database)/documents/accounts/$(accountId))
+          .data.ownerId == userId();
+    }
+
+    // A partner writing into this person's personal account, through a shared
+    // account both are members of (`sharedVia`; see services/split/sharedIncomeService.js)
+    function isViaSharedAccount(data) {
+      let shared = get(/databases/$(database)/documents/accounts/$(data.sharedVia)).data;
+      let target = get(/databases/$(database)/documents/accounts/$(data.accountId)).data;
+      return isAuthenticated()
+        && shared.members.hasAny([userId()])
+        && target.type == "personal"
+        && shared.members.hasAny([target.ownerId]);
+    }
+
+    function canWriteTransaction(data) {
+      return isAccountMember(data.accountId)
+        || (data.get("sharedVia", null) is string && isViaSharedAccount(data));
+    }
+
+    /* -------------------- USERS -------------------- */
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    match /users/{uid}/notifications/{id} {
+      allow read, update, delete: if request.auth.uid == uid;
+    }
+
+    /* -------------------- ACCOUNTS -------------------- */
+
+    match /accounts/{accountId} {
+
+      allow read: if isAuthenticated()
+        && resource.data.members.hasAny([userId()]);
+
+      allow create: if isAuthenticated();
+
+      allow update: if isAuthenticated()
+        && resource.data.members.hasAny([userId()]);
+
+      allow delete: if isAuthenticated()
+        && resource.data.ownerId == userId();
+    }
+
+    /* -------------------- TRANSACTIONS -------------------- */
+
+    match /transactions/{transactionId} {
+
+      // Partners can write into each other's personal account but not read it
+      allow read: if isAccountMember(resource.data.accountId);
+
+      allow create: if canWriteTransaction(request.resource.data);
+
+      // Both where it is and where it goes, so nobody can pull someone else's transaction into their account
+      allow update: if canWriteTransaction(resource.data)
+        && canWriteTransaction(request.resource.data);
+
+      // A split income at 100% deletes a personal part that may not exist
+      allow delete: if resource == null || canWriteTransaction(resource.data);
+    }
+
+    /* -------------------- CARDS -------------------- */
+
+    match /cards/{cardId} {
+
+      allow read: if isAccountMember(resource.data.accountId);
+
+      allow create: if isAccountMember(request.resource.data.accountId);
+
+      allow update: if isAccountMember(resource.data.accountId)
+        && isAccountMember(request.resource.data.accountId);
+
+      allow delete: if isAccountMember(resource.data.accountId);
+    }
+
+    /* -------------------- BUDGETS -------------------- */
+
+    match /budgets/{budgetId} {
+
+      allow read: if isAccountMember(resource.data.accountId);
+
+      allow create: if isAccountMember(request.resource.data.accountId);
+
+      allow update: if isAccountMember(resource.data.accountId)
+        && isAccountMember(request.resource.data.accountId);
+
+      allow delete: if isAccountMember(resource.data.accountId);
+    }
+
+    /* -------------------- RECURRING BILLS -------------------- */
+
+    match /recurringBills/{billId} {
+      allow read, delete: if isAccountMember(resource.data.accountId);
+
+      allow create: if isAccountMember(request.resource.data.accountId)
+        && request.resource.data.keys().hasOnly(
+             ['accountId', 'name', 'amount', 'category', 'dueDay', 'keyword', 'paid', 'createdAt', 'createdBy'])
+        && request.resource.data.name is string
+        && request.resource.data.amount is number && request.resource.data.amount > 0
+        && request.resource.data.dueDay is int
+        && request.resource.data.dueDay >= 1 && request.resource.data.dueDay <= 31;
+
+      // Can't move a bill to another account or touch alertsSent (only the Cloud Function writes it)
+      allow update: if isAccountMember(resource.data.accountId)
+        && request.resource.data.accountId == resource.data.accountId
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['alertsSent', 'createdBy', 'createdAt'])
+        && request.resource.data.amount is number && request.resource.data.amount > 0
+        && request.resource.data.dueDay is int
+        && request.resource.data.dueDay >= 1 && request.resource.data.dueDay <= 31;
+    }
+
+    /* -------------------- GOALS -------------------- */
+
+    match /goals/{goalId} {
+
+      allow read: if isAccountMember(resource.data.accountId);
+
+      allow create: if isAccountMember(request.resource.data.accountId);
+
+      allow update: if isAccountMember(resource.data.accountId)
+        && isAccountMember(request.resource.data.accountId);
+
+      allow delete: if isAccountMember(resource.data.accountId);
+    }
+
+    /* -------------------- CATEGORIES -------------------- */
+
+    match /categories/{id} {
+      allow read: if isAuthenticated();
+      allow write: if false; // seeded only
+    }
+  }
+}

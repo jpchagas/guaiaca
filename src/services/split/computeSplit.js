@@ -2,17 +2,20 @@
  * Expense split for shared accounts.
  *
  * Account config (stored on the account doc, optional — defaults to equal):
- *   split: { mode: "equal" | "proportional" | "fixed", shares?: { [uid]: percent } }
+ *   split: { mode: "equal" | "proportional" | "fixed" | "joint", shares?: { [uid]: percent } }
+ *
+ * "joint" (conta única) pools everything: all income and all expenses belong
+ * to everyone, so nobody owes anyone and there is nothing to settle.
  *
  * Everything else is derived from the month's transactions:
  *   - shared expenses  = transactions with classification "expense" (investments excluded)
- *   - income per member = "revenue" transactions by responsibleUserId
+ *   - income per member = "revenue" transactions by responsibleUserId (gross, for split incomes)
  *   - paid per member   = "expense" transactions by responsibleUserId
  *
  * Money is handled in cents so each member's share adds up exactly to the total.
  */
 
-export const SPLIT_MODES = ["equal", "proportional", "fixed"];
+export const SPLIT_MODES = ["equal", "proportional", "fixed", "joint"];
 
 const toCents = (value) => Math.round((Number(value) || 0) * 100);
 const toReais = (cents) => cents / 100;
@@ -90,13 +93,16 @@ export function computeSplit({ memberIds = [], transactions = [], config }) {
   const paid = Object.fromEntries(memberIds.map((id) => [id, 0]));
   let totalCents = 0;
   let unassignedCents = 0;
+  let allIncomeCents = 0;
 
   transactions.forEach((tx) => {
     const cents = toCents(Math.abs(Number(tx.amount) || 0));
     const owner = tx.responsibleUserId;
 
     if (tx.classification === "revenue") {
-      if (isMember(owner)) income[owner] += cents;
+      allIncomeCents += cents;
+      // A split income counts in full: only its shared part is in this account (see incomeShare.js)
+      if (isMember(owner)) income[owner] += toCents(tx.incomeSplit?.gross ?? tx.amount);
     } else if (tx.classification === "expense") {
       totalCents += cents;
       if (isMember(owner)) paid[owner] += cents;
@@ -105,6 +111,29 @@ export function computeSplit({ memberIds = [], transactions = [], config }) {
   });
 
   const totalIncomeCents = memberIds.reduce((s, id) => s + income[id], 0);
+
+  if (mode === "joint") {
+    return {
+      mode,
+      effectiveMode: mode,
+      warning: null,
+      total: toReais(totalCents),
+      // Pooled: income without a responsible member still counts
+      totalIncome: toReais(allIncomeCents),
+      remaining: toReais(allIncomeCents - totalCents),
+      unassignedPaid: toReais(unassignedCents),
+      rows: memberIds.map((id) => ({
+        id,
+        share: 0,
+        income: toReais(income[id]),
+        owed: 0,
+        paid: toReais(paid[id]),
+        balance: 0,
+        remaining: 0,
+      })),
+      transfers: [],
+    };
+  }
 
   let weights;
   let effectiveMode = mode;

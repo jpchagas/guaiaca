@@ -18,21 +18,33 @@ import {
 import { alpha } from "@mui/material/styles";
 import { DeleteOutline } from "@mui/icons-material";
 
+import { useAccount } from "../context/AccountContext";
 import { useCategories } from "../hooks/useCategories";
+import { useCards } from "../hooks/useCards";
+import BankAvatar from "./ui/BankAvatar";
 import CategoryAvatar from "./ui/CategoryAvatar";
 import { finance } from "../theme";
+import { BANKS } from "../utils/banks";
+import { SPLIT_MODE_INFO } from "../utils/splitModes";
 import {
   METHOD_LABELS,
+  formatCurrency,
+  getFirstName,
   parseAmountInput,
   toAmountInput,
   toDate,
   toDateInputValue,
 } from "../utils/format";
 
+import { saveTransaction } from "../services/transactions/transactionService";
+import { isSplitAccount, isSplitIncome, planIncomeSplit } from "../services/split/incomeShare";
 import {
-  createTransaction,
-  updateTransactionById,
-} from "../services/transactions/transactionService";
+  defaultTarget,
+  destinationOptions,
+  personalPartId,
+  sharedPartId,
+  targetOf,
+} from "../services/split/sharedIncomeService";
 
 const CLASSIFICATIONS = [
   { value: "expense", label: "Despesa", color: finance.expense },
@@ -46,7 +58,7 @@ const SUBMIT_LABELS = {
   investment: "Adicionar investimento",
 };
 
-function buildInitialForm(initialData, currentUserId) {
+function buildInitialForm(initialData, currentUserId, target) {
   if (!initialData) {
     return {
       description: "",
@@ -55,7 +67,10 @@ function buildInitialForm(initialData, currentUserId) {
       date: toDateInputValue(new Date()),
       classification: "expense",
       method: "pix",
+      cardId: "",
+      bank: "",
       responsibleUserId: currentUserId || "",
+      target,
       installmentsEnabled: false,
       installmentsTotal: "2",
       installmentsCurrent: "1",
@@ -66,12 +81,16 @@ function buildInitialForm(initialData, currentUserId) {
 
   return {
     description: initialData.description || "",
-    amount: toAmountInput(initialData.amount),
+    // A split income is edited as a whole
+    amount: toAmountInput(initialData.incomeSplit?.gross ?? initialData.amount),
     category: initialData.category || "",
     date: toDateInputValue(date),
     classification: initialData.classification || "expense",
     method: initialData.method || "pix",
+    cardId: initialData.cardId || "",
+    bank: initialData.bank || "",
     responsibleUserId: initialData.responsibleUserId || currentUserId || "",
+    target,
     installmentsEnabled: !!initialData.installment,
     installmentsTotal: String(initialData.installment?.total || "2"),
     installmentsCurrent: String(initialData.installment?.current || "1"),
@@ -88,16 +107,51 @@ export default function ManualTransactionForm({
   onDelete,
 }) {
   const categories = useCategories();
+  const { accounts, transactions } = useAccount();
+  const { cards } = useCards(accounts.map((a) => a.id));
   const isEdit = mode === "edit";
 
   const [formData, setFormData] = useState(() =>
-    buildInitialForm(isEdit ? initialData : null, currentUserId)
+    buildInitialForm(
+      isEdit ? initialData : null,
+      currentUserId,
+      isEdit ? targetOf(initialData, accounts) : defaultTarget(currentAccount)
+    )
   );
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const showInstallments = formData.method === "credit_card";
+
+  const categoriesById = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories]);
+  const ctx = { currentAccount, accounts, members, transactions, categoriesById };
+
+  // Shared or personal (accounts that split per person only)
+  const destinations = destinationOptions({ ...ctx, responsibleUserId: formData.responsibleUserId });
+  const targetAccount = accounts.find((a) => a.id === formData.target);
+
+  // An earning sent to a split account: how much stays shared and how much goes to personal
+  const incomeSplit = useMemo(() => {
+    const amount = parseAmountInput(formData.amount);
+    if (
+      !(amount > 0) ||
+      !isSplitAccount(targetAccount) ||
+      !isSplitIncome(formData.classification, categoriesById[formData.category]) ||
+      !(targetAccount.members || []).includes(formData.responsibleUserId)
+    ) {
+      return null;
+    }
+    const sharedId = isEdit ? sharedPartId(initialData) : null;
+    return planIncomeSplit({
+      account: targetAccount,
+      responsibleUserId: formData.responsibleUserId,
+      amount,
+      date: formData.date,
+      transactions,
+      excludeIds: sharedId ? [sharedId, personalPartId(sharedId)] : [],
+    });
+  }, [formData, targetAccount, categoriesById, transactions, isEdit, initialData]);
   const activeClassification =
     CLASSIFICATIONS.find((c) => c.value === formData.classification) ||
     CLASSIFICATIONS[0];
@@ -132,6 +186,21 @@ export default function ManualTransactionForm({
 
   const handleChange = (e) => setField(e.target.name, e.target.value);
 
+  // A card purchase comes from the card's bank; with a single card, it's preselected
+  const selectMethod = (method) =>
+    setFormData((prev) => {
+      if (method !== "credit_card") {
+        // The bank came from the card; don't carry it over to a Pix or transfer
+        return prev.method === "credit_card" ? { ...prev, method, cardId: "", bank: "" } : { ...prev, method };
+      }
+      if (prev.method === "credit_card") return prev;
+      if (cards.length !== 1) return { ...prev, method, bank: "" };
+      return { ...prev, method, cardId: cards[0].id, bank: cards[0].bank };
+    });
+
+  const selectCard = (cardId) =>
+    setFormData((prev) => ({ ...prev, cardId, bank: cards.find((c) => c.id === cardId)?.bank || "" }));
+
   const handleSubmit = async (e) => {
     e?.preventDefault();
     setSubmitted(true);
@@ -147,23 +216,19 @@ export default function ManualTransactionForm({
     };
 
     try {
-      if (isEdit) {
-        await updateTransactionById({
-          transactionId: initialData.id,
-          formData: payload,
-          currentAccountId: currentAccount.id,
-        });
-      } else {
-        await createTransaction({
-          formData: payload,
-          currentAccountId: currentAccount.id,
-        });
-      }
-
+      await saveTransaction({ formData: payload, initialData: isEdit ? initialData : null, ctx });
       onClose();
     } catch (err) {
       console.error(err);
-      setError("Não foi possível salvar a transação. Verifique sua conexão e tente novamente.");
+      const owner = members.find((m) => m.id === formData.responsibleUserId);
+      const name = getFirstName(owner?.name, owner?.email) || "Essa pessoa";
+      setError(
+        err.code === "noPersonalAccount"
+          ? `${name} precisa abrir o app uma vez para receber lançamentos na conta pessoal.`
+          : err.code === "permission-denied"
+          ? `Sem permissão para salvar na conta pessoal de ${name}.`
+          : "Não foi possível salvar a transação. Verifique sua conexão e tente novamente."
+      );
     } finally {
       setLoading(false);
     }
@@ -308,7 +373,7 @@ export default function ManualTransactionForm({
               <Chip
                 key={value}
                 label={label}
-                onClick={() => setField("method", value)}
+                onClick={() => selectMethod(value)}
                 color={active ? "primary" : "default"}
                 variant={active ? "filled" : "outlined"}
               />
@@ -316,6 +381,54 @@ export default function ManualTransactionForm({
           })}
         </Box>
       </Box>
+
+      {/* CARD / BANK */}
+      {formData.method === "credit_card" ? (
+        <TextField
+          select
+          label="Cartão"
+          value={cards.some((c) => c.id === formData.cardId) ? formData.cardId : ""}
+          onChange={(e) => selectCard(e.target.value)}
+          helperText={cards.length ? undefined : "Cadastre seus cartões na aba Cartões para acompanhar cada fatura."}
+          SelectProps={{ displayEmpty: true, renderValue: (id) => cards.find((c) => c.id === id)?.name || "Não informar" }}
+          InputLabelProps={{ shrink: true }}
+        >
+          <MenuItem value="">Não informar</MenuItem>
+          {cards.map((c) => (
+            <MenuItem key={c.id} value={c.id} sx={{ py: 1 }}>
+              <ListItemIcon sx={{ minWidth: 40 }}>
+                <BankAvatar bank={c.bank} size={28} fallback="card" />
+              </ListItemIcon>
+              {c.name}
+              {c.last4?.length > 0 && (
+                <Typography component="span" variant="caption" color="text.secondary" ml={1}>
+                  final {c.last4.join(", ")}
+                </Typography>
+              )}
+            </MenuItem>
+          ))}
+        </TextField>
+      ) : formData.method !== "cash" ? (
+        <TextField
+          select
+          label="Banco"
+          name="bank"
+          value={BANKS[formData.bank] ? formData.bank : ""}
+          onChange={handleChange}
+          SelectProps={{ displayEmpty: true, renderValue: (id) => BANKS[id]?.name || "Não informar" }}
+          InputLabelProps={{ shrink: true }}
+        >
+          <MenuItem value="">Não informar</MenuItem>
+          {Object.entries(BANKS).map(([id, b]) => (
+            <MenuItem key={id} value={id} sx={{ py: 1 }}>
+              <ListItemIcon sx={{ minWidth: 40 }}>
+                <BankAvatar bank={id} size={28} />
+              </ListItemIcon>
+              {b.name}
+            </MenuItem>
+          ))}
+        </TextField>
+      ) : null}
 
       {/* RESPONSIBLE */}
       {members.length > 1 && (
@@ -332,6 +445,55 @@ export default function ManualTransactionForm({
             </MenuItem>
           ))}
         </TextField>
+      )}
+
+      {/* SHARED / PERSONAL */}
+      {destinations.length > 0 && (
+        <Box>
+          <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ display: "block", mb: 1 }}>
+            Conta
+          </Typography>
+          <Box display="flex" flexWrap="wrap" gap={1}>
+            {destinations.map((d) => {
+              const active = formData.target === d.value;
+              return (
+                <Chip
+                  key={d.value}
+                  label={d.label}
+                  onClick={() => setField("target", d.value)}
+                  disabled={d.disabled && !active}
+                  color={active ? "primary" : "default"}
+                  variant={active ? "filled" : "outlined"}
+                />
+              );
+            })}
+          </Box>
+          {destinations.some((d) => d.disabled) && (
+            <Typography variant="caption" color="text.secondary" component="div" mt={0.75}>
+              A conta pessoal fica disponível depois que a pessoa abrir o app uma vez.
+            </Typography>
+          )}
+          {incomeSplit && (
+            <Box
+              sx={(theme) => ({
+                mt: 1.25,
+                p: 1.5,
+                borderRadius: 2.5,
+                bgcolor: alpha(theme.palette.primary.main, 0.06),
+              })}
+            >
+              <Typography variant="body2" fontWeight={600}>
+                {formatCurrency(incomeSplit.shared)} para {targetAccount.name || "a conta compartilhada"}
+                {incomeSplit.personal > 0 && ` e ${formatCurrency(incomeSplit.personal)} para a conta pessoal`}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" component="div">
+                {String(Math.round(incomeSplit.pct * 1000) / 10).replace(".", ",")}% da renda, pela divisão{" "}
+                {SPLIT_MODE_INFO[targetAccount.split?.mode || "equal"].short.toLowerCase()}
+                {targetAccount.split?.mode === "proportional" && " (recalculado quando entram outras rendas do mês)"}
+              </Typography>
+            </Box>
+          )}
+        </Box>
       )}
 
       {/* INSTALLMENTS */}

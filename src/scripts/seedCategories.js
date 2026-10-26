@@ -14,35 +14,32 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+// Income categories first, then the expense taxonomy. Existing projects are
+// moved onto this list by functions/scripts/migrateCategories.js
 const categories = [
   "Salário",
   "Receita de negócios",
   "Investimentos",
   "Reembolsos",
-  "Condomínio",
-  "Energia elétrica",
-  "Água",
-  "Gás",
-  "Internet",
-  "Manutenção",
-  "Telefone",
-  "Impostos",
-  "Supermercado",
-  "Restaurantes",
-  "Bares",
+  "Moradia",
+  "Alimentação",
+  "Restaurantes e delivery",
   "Transporte",
-  "Compras",
-  "Cuidados Pessoais",
-  "Doações & Presentes",
-  "Saúde & Bem-estar",
-  "Assinaturas",
+  "Veículo",
+  "Saúde",
+  "Academia e esportes",
+  "Cuidados pessoais",
+  "Lazer e entretenimento",
   "Viagens",
-  "Entretenimento & Lazer",
-  "Tarifas bancárias",
-  "Empréstimos / financiamentos",
+  "Assinaturas",
   "Educação",
-  "Família & Filhos",
-  "Animais de Estimação",
+  "Pets",
+  "Presentes e doações",
+  "Família e filhos",
+  "Impostos e taxas",
+  "Compras",
+  "Empréstimos e dívidas",
+  "Outros",
 ];
 
 const normalize = (str) =>
